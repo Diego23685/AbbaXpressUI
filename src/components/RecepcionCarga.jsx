@@ -130,7 +130,6 @@ export default function RecepcionCarga() {
     }
   };
 
-  // ✅ 1. DESCARGAR PLANTILLA EXCEL DE EJEMPLO
   const descargarPlantillaExcel = () => {
     const dataEjemplo = [
       {
@@ -165,7 +164,6 @@ export default function RecepcionCarga() {
     XLSX.writeFile(workbook, 'Plantilla_Ingreso_Carga_AbbaXpress.xlsx');
   };
 
-  // ✅ 2. LEER E IMPORTAR EXCEL MASIVO
   const handleImportarExcel = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -214,7 +212,7 @@ export default function RecepcionCarga() {
       }
     };
     reader.readAsBinaryString(file);
-    e.target.value = null; // Resetear input
+    e.target.value = null;
   };
 
   const agregarPaquete = () => {
@@ -541,7 +539,8 @@ export default function RecepcionCarga() {
                     key={pkg.id} 
                     className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs"
                   >
-                    <div className="lg:col-span-3">
+                    {/* Tracking # - 2 columnas */}
+                    <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tracking #</label>
                       <input
                         type="text"
@@ -552,6 +551,7 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
+                    {/* Rótulo / Label - 2 columnas */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Rótulo / Label</label>
                       <input
@@ -563,38 +563,41 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
+                    {/* Categoría - 2 columnas */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Categoría</label>
                       <div className="relative flex items-center">
-                        <Box className="w-4 h-4 text-slate-400 absolute left-2" />
+                        <Box className="w-3.5 h-3.5 text-slate-400 absolute left-2" />
                         <select
                           value={pkg.categoria}
                           onChange={(e) => actualizarPaquete(pkg.id, 'categoria', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-2 font-medium text-slate-800"
+                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-7 pr-1 font-medium text-slate-800 text-xs truncate"
                         >
-                          <option value="GENERAL">Paquete General</option>
+                          <option value="GENERAL">General</option>
                           <option value="SMART_TV">Smart TV</option>
                           <option value="CELULAR">Celular</option>
-                          <option value="PALLET">Pallet Especial</option>
+                          <option value="PALLET">Pallet</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="lg:col-span-1">
+                    {/* Vía - 2 columnas (Aumentado de 1 a 2) */}
+                    <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Vía</label>
                       <div className="relative flex items-center">
-                        {pkg.viaEnvio === 'AEREO' ? <Plane className="w-4 h-4 text-slate-400 absolute left-2" /> : <Ship className="w-4 h-4 text-slate-400 absolute left-2" />}
+                        {pkg.viaEnvio === 'AEREO' ? <Plane className="w-3.5 h-3.5 text-slate-400 absolute left-2" /> : <Ship className="w-3.5 h-3.5 text-slate-400 absolute left-2" />}
                         <select
                           value={pkg.viaEnvio}
                           onChange={(e) => actualizarPaquete(pkg.id, 'viaEnvio', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-2 font-medium text-slate-800"
+                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-7 pr-1 font-medium text-slate-800 text-xs truncate"
                         >
-                          <option value="AEREO">Aéreo</option>
-                          <option value="MARITIMO">Marítimo</option>
+                          <option value="AEREO">AÉREO</option>
+                          <option value="MARITIMO">MARÍTIMO</option>
                         </select>
                       </div>
                     </div>
 
+                    {/* Peso (Lbs) - 1 columna */}
                     <div className="lg:col-span-1">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (Lbs)</label>
                       <input
@@ -607,6 +610,7 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
+                    {/* Tarifa ($) - 1 columna */}
                     <div className="lg:col-span-1">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tarifa ($)</label>
                       <input
@@ -619,6 +623,7 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
+                    {/* Subtotal - 1 columna */}
                     <div className="lg:col-span-1 text-right">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Subtotal</label>
                       <div className="text-xs font-bold font-display text-slate-900">
@@ -626,6 +631,7 @@ export default function RecepcionCarga() {
                       </div>
                     </div>
 
+                    {/* Botón Eliminar - 1 columna */}
                     <div className="lg:col-span-1 flex justify-end">
                       <button
                         type="button"

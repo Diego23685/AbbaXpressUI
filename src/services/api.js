@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://192.168.0.7:5271/api', // Ajusta según el puerto de tu API .NET
+  baseURL: 'http://localhost:5271/api', // Ajusta según el puerto de tu API .NET
 });
 
 // Interceptor para inyectar el Bearer Token automáticamente
