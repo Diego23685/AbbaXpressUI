@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -8,7 +8,9 @@ import {
   Building2, 
   Users, 
   FileSpreadsheet,
-  CheckCircle2
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -21,12 +23,26 @@ export default function ReportesFinancieros() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
 
+  // Estados para Paginación de Ventas por Cliente (10 por página)
+  const [paginaClientes, setPaginaClientes] = useState(1);
+  
+  // Estados para Paginación de Rendimiento por Sucursal (10 por página)
+  const [paginaSucursales, setPaginaSucursales] = useState(1);
+  
+  const REGISTROS_POR_PAGINA = 10;
+
   const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN';
   const esLeon = usuario?.sucursalId === 3;
   const esManagua = usuario?.sucursalId === 1 || usuario?.sucursalId === 2;
 
   useEffect(() => {
     cargarReporte();
+  }, [sucursalFiltro, fechaInicio, fechaFin]);
+
+  // Reiniciar páginas cuando cambien los filtros
+  useEffect(() => {
+    setPaginaClientes(1);
+    setPaginaSucursales(1);
   }, [sucursalFiltro, fechaInicio, fechaFin]);
 
   const cargarReporte = async () => {
@@ -57,6 +73,22 @@ export default function ReportesFinancieros() {
     margenPeridaGanancia: 'GANANCIA'
   };
 
+  // Lógica de paginación: Ventas por Cliente
+  const listaClientes = reporte?.ventasPorCliente || [];
+  const totalPaginasClientes = Math.ceil(listaClientes.length / REGISTROS_POR_PAGINA) || 1;
+  const clientesPaginados = useMemo(() => {
+    const inicio = (paginaClientes - 1) * REGISTROS_POR_PAGINA;
+    return listaClientes.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [listaClientes, paginaClientes]);
+
+  // Lógica de paginación: Ventas por Sucursal
+  const listaSucursales = reporte?.ventasPorSucursal || [];
+  const totalPaginasSucursales = Math.ceil(listaSucursales.length / REGISTROS_POR_PAGINA) || 1;
+  const sucursalesPaginadas = useMemo(() => {
+    const inicio = (paginaSucursales - 1) * REGISTROS_POR_PAGINA;
+    return listaSucursales.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [listaSucursales, paginaSucursales]);
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
       
@@ -78,7 +110,7 @@ export default function ReportesFinancieros() {
       {/* Filtros de Fecha y Sucursal */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
         
-        {/* Selector de Sucursal Dinámico y Seguro */}
+        {/* Selector de Sucursal Dinámico */}
         {(esSuperAdmin || esManagua) && (
           <div>
             <label className="block text-slate-600 font-semibold mb-1">Filtrar por Sucursal</label>
@@ -91,7 +123,6 @@ export default function ReportesFinancieros() {
               {esManagua && <option value="">🏢 Consolidado Managua (Bolonia + Doral)</option>}
               <option value="1">Bolonia (Managua)</option>
               <option value="2">Doral (Managua)</option>
-              {/* Ocultamos totalmente la opción de León para evitar filtros cruzados no autorizados */}
             </select>
           </div>
         )}
@@ -157,57 +188,127 @@ export default function ReportesFinancieros() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
             
             {/* Ventas por Cliente */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-brand" /> Ventas por Cliente / Mayorista
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
-                      <th className="py-2">Cliente</th>
-                      <th className="py-2 text-center">Proformas</th>
-                      <th className="py-2 text-right">Total USD</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {reporte?.ventasPorCliente?.map((c, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 font-bold text-slate-800">{c.cliente}</td>
-                        <td className="py-2.5 text-center font-medium text-slate-600">{c.cantidadProformas}</td>
-                        <td className="py-2.5 text-right font-black font-display text-emerald-700">${c.totalUSD.toFixed(2)}</td>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
+                  <Users className="w-4 h-4 text-brand" /> Ventas por Cliente / Mayorista ({listaClientes.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
+                        <th className="py-2">Cliente</th>
+                        <th className="py-2 text-center">Proformas</th>
+                        <th className="py-2 text-right">Total USD</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {clientesPaginados.length === 0 ? (
+                        <tr>
+                          <td colSpan="3" className="text-center py-6 text-slate-400">
+                            Sin registros de clientes para este rango.
+                          </td>
+                        </tr>
+                      ) : (
+                        clientesPaginados.map((c, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-2.5 font-bold text-slate-800">{c.cliente}</td>
+                            <td className="py-2.5 text-center font-medium text-slate-600">{c.cantidadProformas}</td>
+                            <td className="py-2.5 text-right font-black font-display text-emerald-700">${c.totalUSD.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
+              {/* Paginación Ventas por Cliente */}
+              {listaClientes.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-slate-500">
+                  <span className="text-[11px]">
+                    Pág. {paginaClientes} de {totalPaginasClientes}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPaginaClientes((p) => Math.max(p - 1, 1))}
+                      disabled={paginaClientes === 1}
+                      className="p-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setPaginaClientes((p) => Math.min(p + 1, totalPaginasClientes))}
+                      disabled={paginaClientes === totalPaginasClientes}
+                      className="p-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ventas por Sucursal */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-brand" /> Rendimiento por Sucursal
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
-                      <th className="py-2">Sucursal</th>
-                      <th className="py-2 text-center">Proformas Facturadas</th>
-                      <th className="py-2 text-right">Total USD</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {reporte?.ventasPorSucursal?.map((s, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 font-bold text-slate-800">{s.sucursal}</td>
-                        <td className="py-2.5 text-center font-medium text-slate-600">{s.cantidadProformas}</td>
-                        <td className="py-2.5 text-right font-black font-display text-emerald-700">${s.totalUSD.toFixed(2)}</td>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-brand" /> Rendimiento por Sucursal ({listaSucursales.length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
+                        <th className="py-2">Sucursal</th>
+                        <th className="py-2 text-center">Proformas Facturadas</th>
+                        <th className="py-2 text-right">Total USD</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sucursalesPaginadas.length === 0 ? (
+                        <tr>
+                          <td colSpan="3" className="text-center py-6 text-slate-400">
+                            Sin registros de sucursales para este rango.
+                          </td>
+                        </tr>
+                      ) : (
+                        sucursalesPaginadas.map((s, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="py-2.5 font-bold text-slate-800">{s.sucursal}</td>
+                            <td className="py-2.5 text-center font-medium text-slate-600">{s.cantidadProformas}</td>
+                            <td className="py-2.5 text-right font-black font-display text-emerald-700">${s.totalUSD.toFixed(2)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
+              {/* Paginación Rendimiento por Sucursal */}
+              {listaSucursales.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-slate-500">
+                  <span className="text-[11px]">
+                    Pág. {paginaSucursales} de {totalPaginasSucursales}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPaginaSucursales((p) => Math.max(p - 1, 1))}
+                      disabled={paginaSucursales === 1}
+                      className="p-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setPaginaSucursales((p) => Math.min(p + 1, totalPaginasSucursales))}
+                      disabled={paginaSucursales === totalPaginasSucursales}
+                      className="p-1 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>

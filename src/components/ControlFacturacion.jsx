@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Receipt, 
   Search, 
@@ -15,7 +15,9 @@ import {
   PackageCheck,
   ShieldAlert,
   Printer,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
@@ -39,6 +41,10 @@ export default function ControlFacturacion() {
   const [metodoSeleccionado, setMetodoSeleccionado] = useState('EFECTIVO_USD');
   const [proformaExpandida, setProformaExpandida] = useState(null);
 
+  // Estado para la Paginación (10 registros por página)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const REGISTROS_POR_PAGINA = 10;
+
   // Estado para el ticket / comprobante
   const [ticketData, setTicketData] = useState(null);
 
@@ -47,6 +53,11 @@ export default function ControlFacturacion() {
   useEffect(() => {
     cargarDatos();
   }, [filtroEstado]);
+
+  // Reiniciar la página a 1 cuando cambie el filtro de estado o la búsqueda
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroEstado, busqueda]);
 
   const cargarDatos = async () => {
     setCargando(true);
@@ -72,6 +83,13 @@ export default function ControlFacturacion() {
     e.preventDefault();
     cargarDatos();
   };
+
+  // Cálculo dinámico para la paginación
+  const totalPaginas = Math.ceil(proformas.length / REGISTROS_POR_PAGINA) || 1;
+  const proformasPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    return proformas.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [proformas, paginaActual]);
 
   const toggleExpandir = (id) => {
     setProformaExpandida(proformaExpandida === id ? null : id);
@@ -309,14 +327,14 @@ export default function ControlFacturacion() {
                     Cargando registros contables...
                   </td>
                 </tr>
-              ) : proformas.length === 0 ? (
+              ) : proformasPaginadas.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center py-8 text-slate-400">
                     No se encontraron proformas en este estado.
                   </td>
                 </tr>
               ) : (
-                proformas.map((p) => {
+                proformasPaginadas.map((p) => {
                   const esRemisionMayoristaManagua = esLeon && p.sucursalOrigen !== 'Sucursal León';
 
                   return (
@@ -405,7 +423,7 @@ export default function ControlFacturacion() {
                               <MessageCircle className="w-4 h-4" />
                             </button>
 
-                            {/* Botón para Re-generar / Ver Comprobante (Disponible en todo momento) */}
+                            {/* Botón para Re-generar / Ver Comprobante */}
                             <button
                               onClick={() => abrirTicketExistente(p)}
                               className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
@@ -491,6 +509,37 @@ export default function ControlFacturacion() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación de 10 registros por página */}
+        {!cargando && proformas.length > 0 && (
+          <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs">
+            <span>
+              Mostrando {((paginaActual - 1) * REGISTROS_POR_PAGINA) + 1} - {Math.min(paginaActual * REGISTROS_POR_PAGINA, proformas.length)} de {proformas.length} proformas
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
+                disabled={paginaActual === 1}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <span className="px-3 font-semibold text-slate-700">
+                Página {paginaActual} de {totalPaginas}
+              </span>
+
+              <button
+                onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de Liquidación / Cobro */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   UserPlus, 
@@ -12,7 +12,11 @@ import {
   Edit2, 
   Trash2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { clienteService } from '../services/clienteService';
 
@@ -20,8 +24,13 @@ export default function GestionClientes() {
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [clienteEdicion, setClienteEdicion] = useState(null);
+
+  // Estado para la Paginación (10 registros por página)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const REGISTROS_POR_PAGINA = 10;
 
   // Formulario
   const [nombre, setNombre] = useState('');
@@ -54,6 +63,26 @@ export default function GestionClientes() {
     e.preventDefault();
     cargarClientes();
   };
+
+  // Lógica de Filtrado Local (Por Tipo de Cliente)
+  const clientesFiltrados = useMemo(() => {
+    return clientes.filter((c) => {
+      const coincideTipo = filtroTipo === '' || c.tipoCliente === filtroTipo;
+      return coincideTipo;
+    });
+  }, [clientes, filtroTipo]);
+
+  // Reiniciar a la Página 1 al cambiar de filtro o al realizar búsquedas
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [busqueda, filtroTipo]);
+
+  // Lógica de Paginación
+  const totalPaginas = Math.ceil(clientesFiltrados.length / REGISTROS_POR_PAGINA) || 1;
+  const clientesPaginados = useMemo(() => {
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    return clientesFiltrados.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [clientesFiltrados, paginaActual]);
 
   const abrirModalNuevo = () => {
     setClienteEdicion(null);
@@ -143,9 +172,9 @@ export default function GestionClientes() {
         </button>
       </div>
 
-      {/* Buscador */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-        <form onSubmit={handleBuscar} className="w-full md:w-96 relative flex items-center">
+      {/* Buscador y Filtro por Tipo */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+        <form onSubmit={handleBuscar} className="w-full sm:w-96 relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 absolute left-3" />
           <input
             type="text"
@@ -155,6 +184,19 @@ export default function GestionClientes() {
             className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pl-9 pr-3 text-xs focus:outline-none focus:border-brand font-medium"
           />
         </form>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+          <select
+            value={filtroTipo}
+            onChange={(e) => setFiltroTipo(e.target.value)}
+            className="w-full sm:w-auto bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-700 focus:outline-none focus:border-brand"
+          >
+            <option value="">Todos los Tipos</option>
+            <option value="CONSUMIDOR_FINAL">👤 Consumidor Final</option>
+            <option value="SUCURSAL_B2B">🏢 Mayorista B2B</option>
+          </select>
+        </div>
       </div>
 
       {/* Tabla de Clientes */}
@@ -179,14 +221,14 @@ export default function GestionClientes() {
                     Cargando directorio...
                   </td>
                 </tr>
-              ) : clientes.length === 0 ? (
+              ) : clientesPaginados.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center py-8 text-slate-400">
                     No se encontraron clientes registrados.
                   </td>
                 </tr>
               ) : (
-                clientes.map((c) => (
+                clientesPaginados.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-3.5 px-4 font-bold text-slate-800">
                       <div className="flex items-center gap-2">
@@ -244,6 +286,37 @@ export default function GestionClientes() {
             </tbody>
           </table>
         </div>
+
+        {/* Control de Paginación */}
+        {!cargando && clientesFiltrados.length > 0 && (
+          <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs">
+            <span>
+              Mostrando {((paginaActual - 1) * REGISTROS_POR_PAGINA) + 1} - {Math.min(paginaActual * REGISTROS_POR_PAGINA, clientesFiltrados.length)} de {clientesFiltrados.length} clientes
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
+                disabled={paginaActual === 1}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <span className="px-3 font-semibold text-slate-700">
+                Página {paginaActual} de {totalPaginas}
+              </span>
+
+              <button
+                onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Crear/Editar Cliente */}

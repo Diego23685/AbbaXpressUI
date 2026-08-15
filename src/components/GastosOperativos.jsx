@@ -1,14 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrendingUp, 
-  DollarSign, 
   PlusCircle, 
   Building, 
   Zap, 
   Droplet, 
   Users, 
   FileText,
-  PieChart
+  PieChart,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  RotateCcw,
+  Calendar
 } from 'lucide-react';
 import { finanzasService } from '../services/finanzasService';
 import api from '../services/api';
@@ -28,6 +35,21 @@ export default function GastosOperativos() {
   const [tipoCambioOficial, setTipoCambioOficial] = useState(36.6243);
   const [cargando, setCargando] = useState(true);
   const [modalNuevoGasto, setModalNuevoGasto] = useState(false);
+
+  // Control de visibilidad para filtros avanzados
+  const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
+
+  // Estados para Filtros
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [filtroSucursal, setFiltroSucursal] = useState('');
+  const [filtroMetodo, setFiltroMetodo] = useState('');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+
+  // Estado para Paginación (10 items por página)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const REGISTROS_POR_PAGINA = 10;
 
   // Formulario nuevo gasto
   const [categoria, setCategoria] = useState('RENTA');
@@ -61,6 +83,67 @@ export default function GastosOperativos() {
     }
   };
 
+  // Categorías y sucursales únicas extraídas en tiempo real
+  const categoriasUnicas = useMemo(() => {
+    const cats = gastos.map(g => g.categoria?.toUpperCase().trim()).filter(Boolean);
+    return [...new Set(cats)];
+  }, [gastos]);
+
+  const sucursalesUnicas = useMemo(() => {
+    const nombres = gastos.map(g => g.sucursalNombre).filter(Boolean);
+    return [...new Set(nombres)];
+  }, [gastos]);
+
+  // Contar cuántos filtros secundarios están activos actualmente
+  const contadorFiltrosActivos = useMemo(() => {
+    let count = 0;
+    if (filtroCategoria) count++;
+    if (filtroSucursal) count++;
+    if (filtroMetodo) count++;
+    if (fechaInicio) count++;
+    if (fechaFin) count++;
+    return count;
+  }, [filtroCategoria, filtroSucursal, filtroMetodo, fechaInicio, fechaFin]);
+
+  // Lógica de filtrado
+  const gastosFiltrados = useMemo(() => {
+    return gastos.filter((g) => {
+      const coincideBusqueda = 
+        g.descripcion?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        g.numeroComprobante?.toLowerCase().includes(busqueda.toLowerCase());
+
+      const catGasto = g.categoria?.toUpperCase().trim();
+      const coincideCategoria = filtroCategoria === '' || catGasto === filtroCategoria.toUpperCase().trim();
+      const coincideSucursal = filtroSucursal === '' || g.sucursalNombre === filtroSucursal;
+      const coincideMetodo = filtroMetodo === '' || g.metodoPago === filtroMetodo;
+
+      const fechaGasto = new Date(g.fechaGasto);
+      const coincideFechaInicio = !fechaInicio || fechaGasto >= new Date(fechaInicio);
+      const coincideFechaFin = !fechaFin || fechaGasto <= new Date(`${fechaFin}T23:59:59`);
+
+      return coincideBusqueda && coincideCategoria && coincideSucursal && coincideMetodo && coincideFechaInicio && coincideFechaFin;
+    });
+  }, [gastos, busqueda, filtroCategoria, filtroSucursal, filtroMetodo, fechaInicio, fechaFin]);
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [busqueda, filtroCategoria, filtroSucursal, filtroMetodo, fechaInicio, fechaFin]);
+
+  const totalPaginas = Math.ceil(gastosFiltrados.length / REGISTROS_POR_PAGINA) || 1;
+  const gastosPaginados = useMemo(() => {
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    return gastosFiltrados.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [gastosFiltrados, paginaActual]);
+
+  const limpiarFiltros = () => {
+    setBusqueda('');
+    setFiltroCategoria('');
+    setFiltroSucursal('');
+    setFiltroMetodo('');
+    setFechaInicio('');
+    setFechaFin('');
+  };
+
   const handleCrearGasto = async (e) => {
     e.preventDefault();
     setGuardando(true);
@@ -69,7 +152,7 @@ export default function GastosOperativos() {
         categoria,
         descripcion,
         montoUSD: parseFloat(montoUSD) || 0,
-        tipoCambio: tipoCambioOficial, // ✅ T/C oficial sincronizado
+        tipoCambio: tipoCambioOficial,
         metodoPago,
         numeroComprobante: comprobante
       });
@@ -86,8 +169,9 @@ export default function GastosOperativos() {
   };
 
   const getIconoCategoria = (cat) => {
-    switch (cat) {
-      case 'RENTA': return <Building className="w-4 h-4 text-indigo-500" />;
+    switch (cat?.toUpperCase()) {
+      case 'RENTA':
+      case 'ALQUILER': return <Building className="w-4 h-4 text-indigo-500" />;
       case 'ENERGIA': return <Zap className="w-4 h-4 text-amber-500" />;
       case 'AGUA': return <Droplet className="w-4 h-4 text-sky-500" />;
       case 'NOMINA': return <Users className="w-4 h-4 text-emerald-500" />;
@@ -111,7 +195,7 @@ export default function GastosOperativos() {
         </div>
         <button
           onClick={() => setModalNuevoGasto(true)}
-          className="px-4 py-2.5 bg-brand hover:bg-brand-600 text-white rounded-xl font-bold text-xs shadow-lg transition flex items-center gap-2 cursor-pointer"
+          className="px-4 py-2.5 bg-brand hover:bg-brand-600 text-white rounded-xl font-bold text-xs shadow-lg transition flex items-center gap-2 cursor-pointer shrink-0"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Registrar Gasto Operativo</span>
@@ -120,7 +204,6 @@ export default function GastosOperativos() {
 
       {/* Tarjetas de Rentabilidad Real */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-        
         <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-2">
           <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">1. Venta Total Facturada</span>
           <p className="text-2xl font-black font-display text-slate-900">
@@ -154,6 +237,132 @@ export default function GastosOperativos() {
             C$ {balance.utilidadNetaNIO.toFixed(2)} NIO
           </p>
         </div>
+      </div>
+
+      {/* Panel de Búsqueda y Filtros Optimizados */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
+        
+        {/* Barra Superior de Filtros */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          
+          {/* Búsqueda por Texto Integrada */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Buscar por concepto o comprobante..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand text-xs font-medium"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Botón para Desplegar Filtros Avanzados */}
+            <button
+              onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
+              className={`px-3 py-2 rounded-xl font-semibold border flex items-center gap-2 transition cursor-pointer text-xs ${
+                mostrarFiltrosAvanzados || contadorFiltrosActivos > 0
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Filtros Avanzados</span>
+              {contadorFiltrosActivos > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 bg-brand text-white text-[10px] rounded-full font-bold">
+                  {contadorFiltrosActivos}
+                </span>
+              )}
+              {mostrarFiltrosAvanzados ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {/* Limpiar Filtros */}
+            {(busqueda || contadorFiltrosActivos > 0) && (
+              <button
+                onClick={limpiarFiltros}
+                className="p-2 text-slate-500 hover:text-brand bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer"
+                title="Limpiar todos los filtros"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Acordeón de Filtros Secundarios (Colapsable) */}
+        {mostrarFiltrosAvanzados && (
+          <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 animate-fadeIn">
+            
+            {/* Categoría */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Categoría</label>
+              <select
+                value={filtroCategoria}
+                onChange={(e) => setFiltroCategoria(e.target.value)}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand font-medium text-xs"
+              >
+                <option value="">Todas las Categorías</option>
+                {categoriasUnicas.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sucursal */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Sucursal</label>
+              <select
+                value={filtroSucursal}
+                onChange={(e) => setFiltroSucursal(e.target.value)}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand font-medium text-xs"
+              >
+                <option value="">Todas las Sucursales</option>
+                {sucursalesUnicas.map((suc) => (
+                  <option key={suc} value={suc}>{suc}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Método de Pago */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Método de Pago</label>
+              <select
+                value={filtroMetodo}
+                onChange={(e) => setFiltroMetodo(e.target.value)}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand font-medium text-xs"
+              >
+                <option value="">Todos los Métodos</option>
+                <option value="EFECTIVO_USD">Efectivo ($ USD)</option>
+                <option value="EFECTIVO_NIO">Efectivo (C$ NIO)</option>
+                <option value="TRANSFERENCIA">Transferencia</option>
+                <option value="TARJETA">Tarjeta</option>
+              </select>
+            </div>
+
+            {/* Rango de Fechas Reorganizado en 2 columnas seguras */}
+            <div className="lg:col-span-2 min-w-0">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-400" /> Rango de Fechas
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand min-w-0"
+                />
+                <input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => setFechaFin(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-brand min-w-0"
+                />
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </div>
 
@@ -162,7 +371,7 @@ export default function GastosOperativos() {
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h2 className="font-bold text-sm text-slate-800 flex items-center gap-2">
             <PieChart className="w-4 h-4 text-brand" />
-            Bitácora de Gastos por Sucursal
+            Bitácora de Gastos ({gastosFiltrados.length} registros)
           </h2>
         </div>
 
@@ -185,14 +394,14 @@ export default function GastosOperativos() {
                     Cargando gastos...
                   </td>
                 </tr>
-              ) : gastos.length === 0 ? (
+              ) : gastosPaginados.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="text-center py-8 text-slate-400">
-                    No hay gastos operativos registrados aún.
+                    No se encontraron gastos con los filtros aplicados.
                   </td>
                 </tr>
               ) : (
-                gastos.map((g) => (
+                gastosPaginados.map((g) => (
                   <tr key={g.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-3.5 px-4 text-slate-500 font-mono">
                       {new Date(g.fechaGasto).toLocaleDateString()}
@@ -212,7 +421,7 @@ export default function GastosOperativos() {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-slate-600">
-                      {g.sucursalNombre}
+                      {g.sucursalNombre || 'N/A'}
                     </td>
                     <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
                       {g.metodoPago}
@@ -222,7 +431,7 @@ export default function GastosOperativos() {
                         ${g.montoUSD.toFixed(2)} USD
                       </div>
                       <div className="text-[10px] text-slate-400 font-display">
-                        C$ {g.montoNIO.toFixed(2)} NIO
+                        C$ {(g.montoNIO || (g.montoUSD * tipoCambioOficial)).toFixed(2)} NIO
                       </div>
                     </td>
                   </tr>
@@ -231,6 +440,37 @@ export default function GastosOperativos() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {!cargando && gastosFiltrados.length > 0 && (
+          <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500">
+            <span>
+              Mostrando {((paginaActual - 1) * REGISTROS_POR_PAGINA) + 1} - {Math.min(paginaActual * REGISTROS_POR_PAGINA, gastosFiltrados.length)} de {gastosFiltrados.length} gastos
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
+                disabled={paginaActual === 1}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <span className="px-3 font-semibold text-slate-700">
+                Página {paginaActual} de {totalPaginas}
+              </span>
+
+              <button
+                onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Nuevo Gasto */}
@@ -254,6 +494,11 @@ export default function GastosOperativos() {
                   <option value="ENERGIA">⚡ Energía Eléctrica</option>
                   <option value="AGUA">💧 Agua Potable</option>
                   <option value="NOMINA">👥 Nómina / Salarios</option>
+                  <option value="PAPELERIA">📄 Papelería</option>
+                  <option value="MANTENIMIENTO">🛠️ Mantenimiento</option>
+                  <option value="SERVICIOS">🌐 Servicios</option>
+                  <option value="PUBLICIDAD">📢 Publicidad</option>
+                  <option value="TRANSPORTE">🚚 Transporte</option>
                   <option value="OTROS">🛠️ Otros Gastos Operativos</option>
                 </select>
               </div>
@@ -293,6 +538,7 @@ export default function GastosOperativos() {
                     <option value="EFECTIVO_USD">Efectivo ($ USD)</option>
                     <option value="EFECTIVO_NIO">Efectivo (C$ NIO)</option>
                     <option value="TRANSFERENCIA">Transferencia</option>
+                    <option value="TARJETA">Tarjeta</option>
                   </select>
                 </div>
               </div>
