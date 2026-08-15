@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShieldCheck, 
   Search, 
@@ -6,7 +6,9 @@ import {
   Building, 
   User, 
   Clock,
-  Activity
+  Activity,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -19,12 +21,21 @@ export default function AuditoriaMovimientos() {
   const [moduloFiltro, setModuloFiltro] = useState('');
   const [sucursalFiltro, setSucursalFiltro] = useState('');
 
+  // Estado para la Paginación (10 registros por página)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const REGISTROS_POR_PAGINA = 10;
+
   const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN';
   const esManagua = usuario?.sucursalId === 1 || usuario?.sucursalId === 2;
 
   useEffect(() => {
     cargarLogs();
   }, [moduloFiltro, sucursalFiltro]);
+
+  // Reiniciar a la página 1 cuando cambie cualquier filtro o búsqueda
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [moduloFiltro, sucursalFiltro, busqueda]);
 
   const cargarLogs = async () => {
     setCargando(true);
@@ -47,6 +58,13 @@ export default function AuditoriaMovimientos() {
     e.preventDefault();
     cargarLogs();
   };
+
+  // Lógica de Paginación en tiempo real
+  const totalPaginas = Math.ceil(logs.length / REGISTROS_POR_PAGINA) || 1;
+  const logsPaginados = useMemo(() => {
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    return logs.slice(inicio, inicio + REGISTROS_POR_PAGINA);
+  }, [logs, paginaActual]);
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
@@ -144,14 +162,14 @@ export default function AuditoriaMovimientos() {
                     Cargando bitácora de auditoría...
                   </td>
                 </tr>
-              ) : logs.length === 0 ? (
+              ) : logsPaginados.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="text-center py-12 text-slate-400">
                     No se encontraron registros de auditoría recientes.
                   </td>
                 </tr>
               ) : (
-                logs.map((log) => (
+                logsPaginados.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50 transition">
                     <td className="py-3.5 px-4 font-mono text-slate-500 whitespace-nowrap">
                       {new Date(log.fechaMovimiento).toLocaleString()}
@@ -181,6 +199,37 @@ export default function AuditoriaMovimientos() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {!cargando && logs.length > 0 && (
+          <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500">
+            <span>
+              Mostrando {((paginaActual - 1) * REGISTROS_POR_PAGINA) + 1} - {Math.min(paginaActual * REGISTROS_POR_PAGINA, logs.length)} de {logs.length} movimientos
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
+                disabled={paginaActual === 1}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              <span className="px-3 font-semibold text-slate-700">
+                Página {paginaActual} de {totalPaginas}
+              </span>
+
+              <button
+                onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
+                disabled={paginaActual === totalPaginas}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
     </div>
