@@ -12,6 +12,7 @@ import Barcode from 'react-barcode';
 import { proformaService } from '../services/proformaService';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import EnvioAnimacion from './EnvioAnimacion';
 
 export interface Paquete {
   id: number | string;
@@ -48,8 +49,12 @@ export default function ImpresionRotulos() {
   const [seleccionados, setSeleccionados] = useState<(number | string)[]>([]);
   const [vistaManifiesto, setVistaManifiesto] = useState<boolean>(false);
   const [despachando, setDespachando] = useState<boolean>(false);
-  const { usuario } = useAuth();
+  
+  // Estado para disparar la animación
+  const [mostrarAnimacion, setMostrarAnimacion] = useState<boolean>(false);
+  const [bultosDespachadosCount, setBultosDespachadosCount] = useState<number>(0);
 
+  const { usuario } = useAuth();
   const esLeon = usuario?.sucursalId === 3;
 
   useEffect(() => {
@@ -144,9 +149,10 @@ export default function ImpresionRotulos() {
     setDespachando(true);
     try {
       await api.put('/proformas/despachar-lote', proformasIdsADespachar);
-      alert('Manifiesto despachado con éxito.');
-      setSeleccionados([]);
-      await cargarCargas();
+      
+      // Lanzar animación con audio
+      setBultosDespachadosCount(paquetesParaImprimir.length);
+      setMostrarAnimacion(true);
     } catch (e) {
       alert('Error al procesar el despacho de manifiesto.');
     } finally {
@@ -154,14 +160,30 @@ export default function ImpresionRotulos() {
     }
   };
 
+  const handleAnimacionTerminada = async () => {
+    setMostrarAnimacion(false);
+    setSeleccionados([]);
+    await cargarCargas();
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
       
+      {/* Modal de Animación Dinámica de Despacho */}
+      {mostrarAnimacion && (
+        <EnvioAnimacion 
+          origen="Sede Managua"
+          destino="Sucursal León"
+          cantidadBultos={bultosDespachadosCount}
+          onCompletado={handleAnimacionTerminada}
+        />
+      )}
+
       {/* Estilos CSS estrictos para aislar la impresión térmica */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page {
-            size: 100mm 150mm; /* Formato estándar de viñeta térmica 4x6" */
+            size: 100mm 150mm;
             margin: 0;
           }
           body {
@@ -378,7 +400,7 @@ export default function ImpresionRotulos() {
             <button
               disabled={despachando || paquetesParaImprimir.length === 0}
               onClick={handleDespacharRutaLeon}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center gap-2 cursor-pointer shadow-lg"
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all"
             >
               <PackageCheck className="w-4 h-4" />
               <span>{despachando ? 'Procesando...' : 'Confirmar Salida en Ruta (Cambiar Estado)'}</span>
@@ -386,7 +408,6 @@ export default function ImpresionRotulos() {
           </div>
         </div>
       ) : (
-        /* VIÑETAS TÉRMICAS PROFESIONALES CON CÓDIGO DE BARRAS */
         <div className="hidden seccion-impresion-termica print:block">
           {paquetesParaImprimir.map((pkg) => (
             <div 
@@ -394,7 +415,6 @@ export default function ImpresionRotulos() {
               className="w-full max-w-[95mm] mx-auto p-4 border border-black rounded-xl bg-white space-y-3 text-black font-sans"
               style={{ pageBreakAfter: 'always', margin: '0 auto', boxSizing: 'border-box' }}
             >
-              {/* Header de Viñeta */}
               <div className="flex justify-between items-center border-b-2 border-black pb-2">
                 <div className="flex items-center gap-2">
                   <img src="/Logo.png" alt="Logo" className="w-8 h-auto object-contain" />
@@ -405,7 +425,6 @@ export default function ImpresionRotulos() {
                 </span>
               </div>
 
-              {/* Destino y Cliente */}
               <div className="space-y-0.5">
                 <span className="text-[9px] uppercase font-bold text-slate-600 block">Destino:</span>
                 <div className="text-lg font-black leading-tight">{pkg.sucursalDestino}</div>
@@ -413,7 +432,6 @@ export default function ImpresionRotulos() {
                 <div className="text-[11px] font-mono">{pkg.clienteTelefono}</div>
               </div>
 
-              {/* Datos de Carga */}
               <div className="p-2 border border-black rounded-lg grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-[9px] uppercase font-bold block text-slate-600">Rótulo / Contenido</span>
@@ -425,7 +443,6 @@ export default function ImpresionRotulos() {
                 </div>
               </div>
 
-              {/* Código de Barras Real y Tracking */}
               <div className="text-center pt-1 border-t-2 border-black flex flex-col items-center justify-center">
                 <Barcode 
                   value={pkg.tracking} 

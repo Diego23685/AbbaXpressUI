@@ -1,9 +1,13 @@
 import api from './api';
 
 export const clienteService = {
-  obtenerTodos: async (busqueda = '') => {
-    const url = busqueda ? `/clientes?busqueda=${encodeURIComponent(busqueda)}` : '/clientes';
-    const response = await api.get(url);
+  obtenerTodos: async (params = {}) => {
+    // Soporta si se envía un string o un objeto con filtros
+    const queryParams = typeof params === 'string' 
+      ? { busqueda: params } 
+      : params;
+
+    const response = await api.get('/clientes', { params: queryParams });
     return response.data;
   },
 
@@ -23,6 +27,7 @@ export const clienteService = {
   },
 
   eliminar: async (id) => {
-    await api.delete(`/clientes/${id}`);
+    const response = await api.delete(`/clientes/${id}`);
+    return response.data;
   }
 };

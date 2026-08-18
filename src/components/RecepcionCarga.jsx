@@ -16,7 +16,6 @@ import {
   Printer,
   MessageCircle,
   X,
-  FileSpreadsheet,
   Download,
   Upload
 } from 'lucide-react';
@@ -80,10 +79,10 @@ export default function RecepcionCarga() {
         api.get('/configuracion')
       ]);
 
-      setClientes(clientesData);
+      setClientes(clientesData || []);
       setSucursales(sucursalesRes.data || []);
 
-      if (clientesData.length > 0) {
+      if (clientesData && clientesData.length > 0) {
         setClienteSeleccionadoId(clientesData[0].id);
         setClienteActual(clientesData[0]);
         aplicarReglaDestino(clientesData[0], sucursalesRes.data || []);
@@ -283,7 +282,7 @@ export default function RecepcionCarga() {
 
     const payload = {
       clienteId: parseInt(clienteSeleccionadoId),
-      sucursalDestinoId: clienteActual?.tipoCliente === 'SUCURSAL_B2B' ? parseInt(sucursalDestinoId) : (usuario?.sucursalId || 3),
+      sucursalDestinoId: clienteActual?.tipoCliente === 'SUCURSAL_B2B' ? parseInt(sucursalDestinoId) : (usuario?.sucursalId || 1),
       cargoDeliveryUSD: parseFloat(cargoDelivery) || 0,
       descuentoUSD: parseFloat(descuento) || 0,
       tipoCambio: parseFloat(tipoCambio) || configGlobal.tipoCambioNIO,
@@ -300,7 +299,7 @@ export default function RecepcionCarga() {
 
     try {
       const res = await proformaService.crear(payload);
-      const numeroGenerado = res?.numero || res?.data?.numero || 'ABBA-1007';
+      const numeroGenerado = res?.numero || res?.data?.numero || 'ABBA-1001';
 
       setTicketData({
         numeroProforma: numeroGenerado,
@@ -389,7 +388,6 @@ export default function RecepcionCarga() {
           </p>
         </div>
 
-        {/* Botones de Excel */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -539,7 +537,6 @@ export default function RecepcionCarga() {
                     key={pkg.id} 
                     className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs"
                   >
-                    {/* Tracking # - 2 columnas */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tracking #</label>
                       <input
@@ -551,7 +548,6 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
-                    {/* Rótulo / Label - 2 columnas */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Rótulo / Label</label>
                       <input
@@ -563,7 +559,6 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
-                    {/* Categoría - 2 columnas */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Categoría</label>
                       <div className="relative flex items-center">
@@ -581,7 +576,6 @@ export default function RecepcionCarga() {
                       </div>
                     </div>
 
-                    {/* Vía - 2 columnas (Aumentado de 1 a 2) */}
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Vía</label>
                       <div className="relative flex items-center">
@@ -597,7 +591,6 @@ export default function RecepcionCarga() {
                       </div>
                     </div>
 
-                    {/* Peso (Lbs) - 1 columna */}
                     <div className="lg:col-span-1">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (Lbs)</label>
                       <input
@@ -610,7 +603,6 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
-                    {/* Tarifa ($) - 1 columna */}
                     <div className="lg:col-span-1">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tarifa ($)</label>
                       <input
@@ -623,7 +615,6 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
-                    {/* Subtotal - 1 columna */}
                     <div className="lg:col-span-1 text-right">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Subtotal</label>
                       <div className="text-xs font-bold font-display text-slate-900">
@@ -631,7 +622,6 @@ export default function RecepcionCarga() {
                       </div>
                     </div>
 
-                    {/* Botón Eliminar - 1 columna */}
                     <div className="lg:col-span-1 flex justify-end">
                       <button
                         type="button"
@@ -659,7 +649,7 @@ export default function RecepcionCarga() {
           )}
         </div>
 
-        {/* Resumen Multimoneda y Botón de Procesamiento */}
+        {/* Resumen Multimoneda */}
         <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-center md:text-left">
             <div>
@@ -693,15 +683,39 @@ export default function RecepcionCarga() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
-              @page { size: 80mm auto; margin: 0; }
-              body * { visibility: hidden; }
-              #ticket-termico-impresion, #ticket-termico-impresion * {
-                visibility: visible; color: #000 !important; font-family: 'Courier New', monospace !important; font-weight: 700 !important;
+              @page {
+                size: 80mm auto;
+                margin: 0;
               }
-              #ticket-termico-impresion { position: absolute; left: 0; top: 0; width: 74mm; padding: 1mm 2mm; background: #fff !important; font-size: 12px !important; display: block !important; }
-              #ticket-digital-pantalla, .no-print { display: none !important; }
+              body * {
+                visibility: hidden;
+              }
+              #ticket-termico-impresion, #ticket-termico-impresion * {
+                visibility: visible;
+                color: #000000 !important;
+                font-family: 'Courier New', Courier, monospace !important;
+                font-weight: 700 !important;
+              }
+              #ticket-termico-impresion {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 74mm;
+                margin: 0;
+                padding: 1mm 2mm;
+                background: #ffffff !important;
+                font-size: 12px !important;
+                display: block !important;
+              }
+              #ticket-digital-pantalla, .no-print {
+                display: none !important;
+              }
             }
-            @media screen { #ticket-termico-impresion { display: none !important; } }
+            @media screen {
+              #ticket-termico-impresion {
+                display: none !important;
+              }
+            }
           `}} />
 
           <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -714,6 +728,7 @@ export default function RecepcionCarga() {
               </button>
             </div>
 
+            {/* 1. TICKET DIGITAL (Para Pantalla y Captura de WhatsApp) */}
             <div className="p-5 overflow-y-auto font-mono text-xs text-slate-800 space-y-3 bg-slate-50" id="ticket-digital-pantalla">
               <div className="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
                 <h4 className="font-bold text-base font-display text-slate-900">ABBA XPRESS</h4>
@@ -747,10 +762,64 @@ export default function RecepcionCarga() {
               </div>
             </div>
 
+            {/* 2. TICKET TÉRMICO FÍSICO (Para Impresoras POS de 80mm en B&N) */}
+            <div id="ticket-termico-impresion">
+              <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2.5">
+                <img src="/Logo.png" alt="Logo" className="w-28 h-auto mx-auto mb-1 filter grayscale contrast-125" />
+                <h4 className="text-base font-black tracking-wider">ABBA XPRESS</h4>
+                <p className="text-[10px] uppercase">ERP LOGISTICO MULTIMONEDA</p>
+                <p className="text-[11px]">{ticketData.sucursalNombre}</p>
+                <p className="text-[10px]">{ticketData.fecha}</p>
+              </div>
+
+              <div className="space-y-1 border-b border-dashed border-black pb-2.5 text-[11px] pt-1">
+                <p><strong>PROFORMA:</strong> #{ticketData.numeroProforma}</p>
+                <p><strong>CLIENTE:</strong> {ticketData.clienteNombre}</p>
+                <p><strong>TEL:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
+                <p><strong>OPERADOR:</strong> {ticketData.usuarioNombre}</p>
+                <p><strong>METODO:</strong> {ticketData.metodoPago}</p>
+              </div>
+
+              <div className="space-y-1 border-b border-dashed border-black pb-2.5 pt-1">
+                <p className="text-[10px] uppercase font-bold">DETALLE DE PAQUETES ({ticketData.paquetes.length})</p>
+                {ticketData.paquetes.map((p, idx) => (
+                  <div key={idx} className="text-[11px] flex justify-between">
+                    <span className="truncate max-w-[140px]">{p.tracking || 'TRK-GEN'}</span>
+                    <span>${p.subtotal.toFixed(2)} USD</span>
+                  </div>
+                ))}
+              </div>
+
+              {ticketData.cargoDelivery > 0 && (
+                <div className="flex justify-between text-[11px] pt-1">
+                  <span>Cargo Delivery:</span>
+                  <span>${ticketData.cargoDelivery.toFixed(2)} USD</span>
+                </div>
+              )}
+
+              {ticketData.descuento > 0 && (
+                <div className="flex justify-between text-[11px] pt-1">
+                  <span>Descuento:</span>
+                  <span>-${ticketData.descuento.toFixed(2)} USD</span>
+                </div>
+              )}
+
+              <div className="border-t border-dashed border-black pt-2 text-right">
+                <p className="text-[10px]">T/C: C$ {ticketData.tipoCambioAplicado.toFixed(4)}</p>
+                <p className="text-sm font-black">TOTAL: ${ticketData.totalUSD.toFixed(2)} USD</p>
+                <p className="text-xs font-black">TOTAL NIO: C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
+              </div>
+
+              <div className="text-center text-[10px] pt-2 border-t border-dashed border-black">
+                <p>¡Gracias por su preferencia!</p>
+                <p>Comprobante de Recepcion</p>
+              </div>
+            </div>
+
             <div className="p-4 bg-white border-t border-slate-200 flex gap-2 no-print">
-              <button onClick={() => setTicketData(null)} className="w-1/3 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Cerrar</button>
-              <button onClick={enviarWhatsAppImagen} className="w-1/3 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1"><MessageCircle className="w-4 h-4" /> WhatsApp</button>
-              <button onClick={imprimirTicket} className="w-1/3 py-2.5 bg-brand text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1"><Printer className="w-4 h-4" /> Imprimir</button>
+              <button onClick={() => setTicketData(null)} className="w-1/3 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs cursor-pointer">Cerrar</button>
+              <button onClick={enviarWhatsAppImagen} className="w-1/3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer"><MessageCircle className="w-4 h-4" /> WhatsApp</button>
+              <button onClick={imprimirTicket} className="w-1/3 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer"><Printer className="w-4 h-4" /> Imprimir</button>
             </div>
           </div>
         </div>

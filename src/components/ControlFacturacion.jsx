@@ -7,17 +7,19 @@ import {
   Clock, 
   DollarSign, 
   Truck, 
-  CreditCard,
-  Building2,
-  UserCheck,
-  ChevronDown,
-  ChevronUp,
-  PackageCheck,
-  ShieldAlert,
-  Printer,
-  X,
-  ChevronLeft,
-  ChevronRight
+  CreditCard, 
+  Building2, 
+  UserCheck, 
+  ChevronDown, 
+  ChevronUp, 
+  PackageCheck, 
+  ShieldAlert, 
+  Printer, 
+  X, 
+  ChevronLeft, 
+  ChevronRight,
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
@@ -41,7 +43,7 @@ export default function ControlFacturacion() {
   const [metodoSeleccionado, setMetodoSeleccionado] = useState('EFECTIVO_USD');
   const [proformaExpandida, setProformaExpandida] = useState(null);
 
-  // Estado para la Paginación (10 registros por página)
+  // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const REGISTROS_POR_PAGINA = 10;
 
@@ -54,7 +56,6 @@ export default function ControlFacturacion() {
     cargarDatos();
   }, [filtroEstado]);
 
-  // Reiniciar la página a 1 cuando cambie el filtro de estado o la búsqueda
   useEffect(() => {
     setPaginaActual(1);
   }, [filtroEstado, busqueda]);
@@ -62,20 +63,24 @@ export default function ControlFacturacion() {
   const cargarDatos = async () => {
     setCargando(true);
     try {
+      const estadoConsulta = filtroEstado === 'PENDIENTE_PAGO' 
+        ? 'PENDIENTE_PAGO,RECIBIDO_BODEGA_LOCAL' 
+        : filtroEstado;
+
       const [listado, datosResumen, configRes] = await Promise.all([
-        proformaService.obtenerTodas({ estado: filtroEstado, busqueda }),
+        proformaService.obtenerTodas({ estado: estadoConsulta, busqueda }),
         proformaService.obtenerResumenCobros(),
         api.get('/configuracion')
       ]);
-      setProformas(listado);
-      setResumen(datosResumen);
+      setProformas(listado || []);
+      setResumen(datosResumen || { totalPorCobrarUSD: 0, totalFacturadoUSD: 0, totalLibrasPendientes: 0, cantidadPendientes: 0 });
       if (configRes.data?.tipoCambioNIO) {
         setTipoCambioOficial(configRes.data.tipoCambioNIO);
       }
     } catch (error) {
       console.error('Error al cargar datos de facturación:', error);
     } finally {
-      setCargando(false);
+      setTimeout(() => setCargando(false), 120);
     }
   };
 
@@ -84,7 +89,6 @@ export default function ControlFacturacion() {
     cargarDatos();
   };
 
-  // Cálculo dinámico para la paginación
   const totalPaginas = Math.ceil(proformas.length / REGISTROS_POR_PAGINA) || 1;
   const proformasPaginadas = useMemo(() => {
     const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
@@ -164,7 +168,6 @@ export default function ControlFacturacion() {
 
     try {
       const dataUrl = await toPng(ticketElement, { cacheBust: true, pixelRatio: 2, backgroundColor: '#ffffff' });
-      
       const link = document.createElement('a');
       link.download = `Comprobante_${ticketData.numeroProforma}.png`;
       link.href = dataUrl;
@@ -181,26 +184,30 @@ export default function ControlFacturacion() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-        <div>
-          <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
-            <Receipt className="w-6 h-6 text-brand" />
-            Cuentas por Cobrar y Facturación
-          </h1>
-          <p className="text-xs text-slate-500">
-            {esLeon 
-              ? 'Control de inventario recibido desde Managua y facturación local a clientes de León'
-              : 'Control de saldos a crédito, cobros en mostrador y notificaciones por WhatsApp'}
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-brand/10 text-brand rounded-2xl flex items-center justify-center transition-transform hover:scale-105 duration-200">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold font-display text-slate-900">
+              Cuentas por Cobrar y Facturación
+            </h1>
+            <p className="text-xs text-slate-500">
+              {esLeon 
+                ? 'Control de inventario recibido desde Managua y facturación local a clientes de León'
+                : 'Control de saldos a crédito, cobros en mostrador y notificaciones por WhatsApp'}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* KPI Cards Dinámicos */}
+      {/* KPI Cards Dinámicos con Hover Lift */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl">
+        <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center justify-between text-amber-700 mb-2">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Por Cobrar (Crédito)</span>
             <Clock className="w-4 h-4" />
@@ -213,7 +220,7 @@ export default function ControlFacturacion() {
           </p>
         </div>
 
-        <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl">
+        <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center justify-between text-emerald-700 mb-2">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Cobrado / Facturado</span>
             <CheckCircle className="w-4 h-4" />
@@ -226,7 +233,7 @@ export default function ControlFacturacion() {
           </p>
         </div>
 
-        <div className="bg-brand/10 border border-brand/30 p-4 rounded-2xl">
+        <div className="bg-brand/10 border border-brand/30 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center justify-between text-brand-700 mb-2">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Libras en Bodega</span>
             <Truck className="w-4 h-4" />
@@ -239,7 +246,7 @@ export default function ControlFacturacion() {
           </p>
         </div>
 
-        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-sm">
+        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="font-semibold uppercase tracking-wider text-[10px]">T/C Oficial</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
@@ -260,7 +267,7 @@ export default function ControlFacturacion() {
         <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setFiltroEstado('PENDIENTE_PAGO')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs ${
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all duration-150 cursor-pointer text-xs active:scale-95 ${
               filtroEstado === 'PENDIENTE_PAGO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -268,7 +275,7 @@ export default function ControlFacturacion() {
           </button>
           <button
             onClick={() => setFiltroEstado('EN_TRANSITO')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs ${
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all duration-150 cursor-pointer text-xs active:scale-95 ${
               filtroEstado === 'EN_TRANSITO' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -276,7 +283,7 @@ export default function ControlFacturacion() {
           </button>
           <button
             onClick={() => setFiltroEstado('FACTURADO')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs ${
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all duration-150 cursor-pointer text-xs active:scale-95 ${
               filtroEstado === 'FACTURADO' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -284,7 +291,7 @@ export default function ControlFacturacion() {
           </button>
           <button
             onClick={() => setFiltroEstado('')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer text-xs ${
+            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all duration-150 cursor-pointer text-xs active:scale-95 ${
               filtroEstado === '' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -300,7 +307,7 @@ export default function ControlFacturacion() {
             placeholder="Buscar por proforma, cliente o tracking..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pl-9 pr-3 text-xs focus:outline-none focus:border-brand font-medium"
+            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pl-9 pr-3 text-xs focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all font-medium"
           />
         </form>
       </div>
@@ -322,14 +329,20 @@ export default function ControlFacturacion() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {cargando ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-8 text-slate-400">
-                    Cargando registros contables...
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="py-4 px-4"><div className="h-3.5 bg-slate-200 rounded w-24"></div></td>
+                    <td className="py-4 px-4"><div className="h-3.5 bg-slate-200 rounded w-36"></div></td>
+                    <td className="py-4 px-4"><div className="h-3 bg-slate-200 rounded w-20"></div></td>
+                    <td className="py-4 px-4"><div className="h-3 bg-slate-200 rounded w-20"></div></td>
+                    <td className="py-4 px-4"><div className="h-3.5 bg-slate-200 rounded w-28 ml-auto"></div></td>
+                    <td className="py-4 px-4 text-center"><div className="h-4 bg-slate-200 rounded-full w-20 mx-auto"></div></td>
+                    <td className="py-4 px-4 text-center"><div className="h-7 bg-slate-200 rounded-xl w-24 mx-auto"></div></td>
+                  </tr>
+                ))
               ) : proformasPaginadas.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-8 text-slate-400">
+                  <td colSpan="7" className="text-center py-12 text-slate-400">
                     No se encontraron proformas en este estado.
                   </td>
                 </tr>
@@ -339,15 +352,17 @@ export default function ControlFacturacion() {
 
                   return (
                     <React.Fragment key={p.id}>
-                      <tr className="hover:bg-slate-50/70 transition">
+                      <tr className="hover:bg-slate-50/80 transition-colors duration-150">
                         
                         {/* Proforma */}
                         <td className="py-3.5 px-4 font-mono font-bold text-brand">
                           <button
                             onClick={() => toggleExpandir(p.id)}
-                            className="flex items-center gap-1.5 hover:underline cursor-pointer text-left"
+                            className="flex items-center gap-1.5 hover:underline cursor-pointer text-left group"
                           >
-                            {proformaExpandida === p.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            <span className="p-0.5 rounded group-hover:bg-brand/10 transition">
+                              {proformaExpandida === p.id ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </span>
                             <span>{p.numeroProforma}</span>
                           </button>
                           <div className="text-[10px] font-normal text-slate-400 font-sans pl-5">
@@ -359,9 +374,9 @@ export default function ControlFacturacion() {
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
                             {p.clienteNombre.includes('León') ? (
-                              <Building2 className="w-3.5 h-3.5 text-brand" />
+                              <Building2 className="w-3.5 h-3.5 text-brand shrink-0" />
                             ) : (
-                              <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                              <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             )}
                             <span>{p.clienteNombre}</span>
                           </div>
@@ -393,7 +408,7 @@ export default function ControlFacturacion() {
 
                         {/* Estado */}
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold transition-transform hover:scale-105 duration-150 ${
                             p.estado === 'FACTURADO'
                               ? 'bg-emerald-100 text-emerald-800'
                               : p.estado === 'RECIBIDO_BODEGA_LOCAL'
@@ -417,28 +432,26 @@ export default function ControlFacturacion() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => dispararWhatsApp(p.id)}
-                              className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl transition cursor-pointer"
+                              className="p-2 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 rounded-xl transition-all cursor-pointer shadow-sm"
                               title="Enviar Notificación por WhatsApp"
                             >
                               <MessageCircle className="w-4 h-4" />
                             </button>
 
-                            {/* Botón para Re-generar / Ver Comprobante */}
                             <button
                               onClick={() => abrirTicketExistente(p)}
-                              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition cursor-pointer"
+                              className="p-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl transition-all cursor-pointer shadow-sm"
                               title="Ver y Re-imprimir Comprobante"
                             >
                               <Printer className="w-4 h-4" />
                             </button>
 
-                            {/* Cobrar */}
                             {(!esLeon || !esRemisionMayoristaManagua) && (
                               p.estado === 'PENDIENTE_PAGO' || p.estado === 'EN_TRANSITO' || p.estado === 'RECIBIDO_BODEGA_LOCAL'
                             ) && (
                               <button
                                 onClick={() => setModalLiquidacion(p)}
-                                className="px-3 py-1.5 bg-brand hover:bg-brand-600 text-white rounded-xl font-bold transition flex items-center gap-1 cursor-pointer"
+                                className="px-3.5 py-1.5 bg-brand hover:bg-brand-600 active:scale-95 text-white rounded-xl font-bold transition-all flex items-center gap-1 cursor-pointer shadow"
                               >
                                 <CreditCard className="w-3.5 h-3.5" />
                                 <span>Cobrar</span>
@@ -455,11 +468,11 @@ export default function ControlFacturacion() {
 
                       </tr>
 
-                      {/* Desglose Detallado */}
+                      {/* Desglose Detallado con Animación */}
                       {proformaExpandida === p.id && (
-                        <tr className="bg-slate-50/90 border-b border-slate-200">
+                        <tr className="bg-slate-50/90 border-b border-slate-200 animate-in fade-in slide-in-from-top-1 duration-150">
                           <td colSpan="7" className="p-4">
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-inner space-y-2">
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-inner space-y-3">
                               <div className="flex items-center justify-between text-slate-600 font-bold border-b border-slate-100 pb-2">
                                 <span className="flex items-center gap-1.5">
                                   <PackageCheck className="w-4 h-4 text-brand" />
@@ -477,9 +490,9 @@ export default function ControlFacturacion() {
                                 </div>
                               )}
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
                                 {p.paquetes.map((pkg, idx) => (
-                                  <div key={idx} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+                                  <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 transition-all hover:bg-slate-100/70">
                                     <div className="flex justify-between items-center">
                                       <span className="font-mono font-bold text-slate-800">{pkg.tracking}</span>
                                       <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-200 text-slate-700">
@@ -510,7 +523,7 @@ export default function ControlFacturacion() {
           </table>
         </div>
 
-        {/* Paginación de 10 registros por página */}
+        {/* Paginación */}
         {!cargando && proformas.length > 0 && (
           <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs">
             <span>
@@ -521,7 +534,7 @@ export default function ControlFacturacion() {
               <button
                 onClick={() => setPaginaActual((p) => Math.max(p - 1, 1))}
                 disabled={paginaActual === 1}
-                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -533,7 +546,7 @@ export default function ControlFacturacion() {
               <button
                 onClick={() => setPaginaActual((p) => Math.min(p + 1, totalPaginas))}
                 disabled={paginaActual === totalPaginas}
-                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer"
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -544,14 +557,14 @@ export default function ControlFacturacion() {
 
       {/* Modal de Liquidación / Cobro */}
       {modalLiquidacion && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans animate-in zoom-in-95 duration-150">
             <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-600" />
               Liquidar y Entregar #{modalLiquidacion.numeroProforma}
             </h2>
 
-            <div className="p-4 bg-slate-50 rounded-2xl space-y-1">
+            <div className="p-4 bg-slate-50 rounded-2xl space-y-1 border border-slate-200">
               <p className="text-slate-500">Cliente: <strong className="text-slate-800">{modalLiquidacion.clienteNombre}</strong></p>
               <p className="text-slate-500">Total a Pagar: <strong className="text-emerald-700 text-sm font-display">${modalLiquidacion.totalCobradoUSD.toFixed(2)} USD (C$ {modalLiquidacion.totalCobradoNIO.toFixed(2)})</strong></p>
             </div>
@@ -561,7 +574,7 @@ export default function ControlFacturacion() {
               <select
                 value={metodoSeleccionado}
                 onChange={(e) => setMetodoSeleccionado(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-3 font-medium text-slate-800 focus:outline-none focus:border-brand"
+                className="w-full bg-white border border-slate-300 rounded-xl p-3 font-medium text-slate-800 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition"
               >
                 <option value="EFECTIVO_USD">💵 Efectivo Dólares ($ USD)</option>
                 <option value="EFECTIVO_NIO">🇳🇮 Efectivo Córdobas (C$ NIO)</option>
@@ -574,14 +587,14 @@ export default function ControlFacturacion() {
               <button
                 type="button"
                 onClick={() => setModalLiquidacion(null)}
-                className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+                className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer active:scale-95"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={ejecutarLiquidacion}
-                className="w-1/2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-lg cursor-pointer"
+                className="w-1/2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-lg cursor-pointer active:scale-95"
               >
                 Confirmar Cobro
               </button>
@@ -590,9 +603,9 @@ export default function ControlFacturacion() {
         </div>
       )}
 
-      {/* Modal de Comprobante / Ticket Dual (Digital a Color & Térmico B&N) */}
+      {/* Modal de Comprobante / Ticket */}
       {ticketData && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -622,10 +635,7 @@ export default function ControlFacturacion() {
                 font-size: 12px !important;
                 display: block !important;
               }
-              #ticket-digital-pantalla {
-                display: none !important;
-              }
-              .no-print {
+              #ticket-digital-pantalla, .no-print {
                 display: none !important;
               }
             }
@@ -636,7 +646,7 @@ export default function ControlFacturacion() {
             }
           `}} />
 
-          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
             
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center no-print">
               <h3 className="font-bold font-display text-sm flex items-center gap-2">
@@ -650,7 +660,7 @@ export default function ControlFacturacion() {
               </button>
             </div>
 
-            {/* 1. TICKET DIGITAL (A color para pantalla y WhatsApp) */}
+            {/* Ticket Digital */}
             <div className="p-5 overflow-y-auto font-mono text-xs text-slate-800 space-y-3 bg-slate-50 select-text" id="ticket-digital-pantalla">
               <div className="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
                 <img 
@@ -719,8 +729,8 @@ export default function ControlFacturacion() {
               </div>
             </div>
 
-            {/* 2. TICKET TÉRMICO OCULTO (Impresión física 80mm B&N) */}
-            <div className="hidden" id="ticket-termico-impresion">
+            {/* Ticket Térmico Físico */}
+            <div id="ticket-termico-impresion">
               <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2.5">
                 <img src="/Logo.png" alt="Logo" className="w-28 h-auto mx-auto mb-1 filter grayscale contrast-125" />
                 <h4 className="text-base font-black tracking-wider">ABBA XPRESS</h4>
@@ -783,20 +793,20 @@ export default function ControlFacturacion() {
             <div className="p-4 bg-white border-t border-slate-200 flex gap-2 no-print">
               <button
                 onClick={() => setTicketData(null)}
-                className="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs"
+                className="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs active:scale-95"
               >
                 Cerrar
               </button>
               <button
                 onClick={enviarWhatsAppImagen}
-                className="w-1/3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                className="w-1/3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer text-xs active:scale-95"
                 title="Enviar imagen por WhatsApp"
               >
                 <MessageCircle className="w-4 h-4" /> WhatsApp
               </button>
               <button
                 onClick={imprimirTicket}
-                className="w-1/3 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                className="w-1/3 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer text-xs active:scale-95"
               >
                 <Printer className="w-4 h-4" /> Imprimir
               </button>

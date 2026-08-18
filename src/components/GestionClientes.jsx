@@ -3,24 +3,19 @@ import {
   Users, 
   UserPlus, 
   Search, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  DollarSign, 
   Building2, 
   User, 
   Edit2, 
   Trash2,
-  CheckCircle2,
-  AlertCircle,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  RotateCcw
+  Filter
 } from 'lucide-react';
 import { clienteService } from '../services/clienteService';
+import { useAuth } from '../context/AuthContext';
 
 export default function GestionClientes() {
+  const { usuario } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -28,7 +23,9 @@ export default function GestionClientes() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [clienteEdicion, setClienteEdicion] = useState(null);
 
-  // Estado para la Paginación (10 registros por página)
+  const esLeon = usuario?.sucursalId === 3;
+
+  // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const REGISTROS_POR_PAGINA = 10;
 
@@ -50,8 +47,10 @@ export default function GestionClientes() {
   const cargarClientes = async () => {
     setCargando(true);
     try {
-      const data = await clienteService.obtenerTodos(busqueda);
-      setClientes(data);
+      const data = await clienteService.obtenerTodos({ 
+        busqueda: busqueda.trim() || undefined 
+      });
+      setClientes(data || []);
     } catch (error) {
       console.error('Error al cargar clientes:', error);
     } finally {
@@ -64,20 +63,17 @@ export default function GestionClientes() {
     cargarClientes();
   };
 
-  // Lógica de Filtrado Local (Por Tipo de Cliente)
   const clientesFiltrados = useMemo(() => {
     return clientes.filter((c) => {
-      const coincideTipo = filtroTipo === '' || c.tipoCliente === filtroTipo;
-      return coincideTipo;
+      if (!filtroTipo) return true;
+      return c.tipoCliente === filtroTipo;
     });
   }, [clientes, filtroTipo]);
 
-  // Reiniciar a la Página 1 al cambiar de filtro o al realizar búsquedas
   useEffect(() => {
     setPaginaActual(1);
   }, [busqueda, filtroTipo]);
 
-  // Lógica de Paginación
   const totalPaginas = Math.ceil(clientesFiltrados.length / REGISTROS_POR_PAGINA) || 1;
   const clientesPaginados = useMemo(() => {
     const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
@@ -157,10 +153,12 @@ export default function GestionClientes() {
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
             <Users className="w-6 h-6 text-brand" />
-            Directorio de Clientes
+            Directorio de Clientes ({esLeon ? 'Sucursal León' : 'Sede Managua'})
           </h1>
           <p className="text-xs text-slate-500">
-            Control de tarifas asignadas, clientes finales y cuentas mayoristas B2B
+            {esLeon 
+              ? 'Cartera de clientes locales de la sucursal de León' 
+              : 'Control de tarifas asignadas, clientes finales y cuentas mayoristas de Managua'}
           </p>
         </div>
         <button
@@ -172,9 +170,9 @@ export default function GestionClientes() {
         </button>
       </div>
 
-      {/* Buscador y Filtro por Tipo */}
+      {/* Barra de Filtros */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-        <form onSubmit={handleBuscar} className="w-full sm:w-96 relative flex items-center">
+        <form onSubmit={handleBuscar} className="w-full sm:w-80 relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 absolute left-3" />
           <input
             type="text"
@@ -185,16 +183,16 @@ export default function GestionClientes() {
           />
         </form>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 w-full sm:w-auto">
+          <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
-            className="w-full sm:w-auto bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-700 focus:outline-none focus:border-brand"
+            className="bg-transparent font-medium text-slate-700 focus:outline-none text-xs cursor-pointer w-full sm:w-auto"
           >
             <option value="">Todos los Tipos</option>
-            <option value="CONSUMIDOR_FINAL">👤 Consumidor Final</option>
-            <option value="SUCURSAL_B2B">🏢 Mayorista B2B</option>
+            <option value="CONSUMIDOR_FINAL">Consumidor Final</option>
+            {!esLeon && <option value="SUCURSAL_B2B">Mayorista B2B (León)</option>}
           </select>
         </div>
       </div>
@@ -218,13 +216,13 @@ export default function GestionClientes() {
               {cargando ? (
                 <tr>
                   <td colSpan="7" className="text-center py-8 text-slate-400">
-                    Cargando directorio...
+                    Cargando directorio de clientes...
                   </td>
                 </tr>
               ) : clientesPaginados.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center py-8 text-slate-400">
-                    No se encontraron clientes registrados.
+                    No se encontraron clientes registrados en esta sede.
                   </td>
                 </tr>
               ) : (
@@ -250,7 +248,7 @@ export default function GestionClientes() {
                           ? 'bg-purple-100 text-purple-800 border border-purple-200' 
                           : 'bg-blue-50 text-blue-700 border border-blue-200'
                       }`}>
-                        {c.tipoCliente === 'SUCURSAL_B2B' ? '🏢 Mayorista B2B' : '👤 Consumidor Final'}
+                        {c.tipoCliente === 'SUCURSAL_B2B' ? 'Mayorista B2B' : 'Consumidor Final'}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-center font-display font-bold text-slate-800">
@@ -287,7 +285,7 @@ export default function GestionClientes() {
           </table>
         </div>
 
-        {/* Control de Paginación */}
+        {/* Paginación */}
         {!cargando && clientesFiltrados.length > 0 && (
           <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs">
             <span>
@@ -334,7 +332,7 @@ export default function GestionClientes() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. María López / Sucursal León"
+                  placeholder="Ej. María López"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-brand font-medium"
@@ -349,9 +347,9 @@ export default function GestionClientes() {
                     onChange={(e) => setCodigoPais(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
                   >
-                    <option value="+505">🇳🇮 +505</option>
-                    <option value="+1">🇺🇸 +1</option>
-                    <option value="+506">🇨🇷 +506</option>
+                    <option value="+505">+505</option>
+                    <option value="+1">+1</option>
+                    <option value="+506">+506</option>
                   </select>
                 </div>
                 <div className="col-span-2">
@@ -397,8 +395,8 @@ export default function GestionClientes() {
                   onChange={(e) => setTipoCliente(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800"
                 >
-                  <option value="CONSUMIDOR_FINAL">👤 Consumidor Final (B2C)</option>
-                  <option value="SUCURSAL_B2B">🏢 Franquicia / Mayorista B2B (Ej. León)</option>
+                  <option value="CONSUMIDOR_FINAL">Consumidor Final (B2C)</option>
+                  {!esLeon && <option value="SUCURSAL_B2B">Franquicia / Mayorista B2B (León)</option>}
                 </select>
               </div>
 
