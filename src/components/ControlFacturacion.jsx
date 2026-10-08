@@ -18,8 +18,10 @@ import {
   X, 
   ChevronLeft, 
   ChevronRight,
-  TrendingUp,
-  RotateCcw
+  Check,
+  Building,
+  Calendar,
+  Box
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
@@ -111,7 +113,7 @@ export default function ControlFacturacion() {
   const abrirTicketExistente = (p) => {
     setTicketData({
       numeroProforma: p.numeroProforma,
-      fecha: new Date(p.fechaRegistro).toLocaleString(),
+      fecha: new Date(p.fechaRegistro).toLocaleString('es-NI', { dateStyle: 'full', timeStyle: 'short' }),
       clienteNombre: p.clienteNombre,
       clienteTelefono: p.clienteTelefono || '',
       usuarioNombre: usuario?.nombre || 'Operador',
@@ -137,7 +139,7 @@ export default function ControlFacturacion() {
 
       setTicketData({
         numeroProforma: proformaCobrada.numeroProforma,
-        fecha: new Date().toLocaleString(),
+        fecha: new Date().toLocaleString('es-NI', { dateStyle: 'full', timeStyle: 'short' }),
         clienteNombre: proformaCobrada.clienteNombre,
         clienteTelefono: proformaCobrada.clienteTelefono || '',
         usuarioNombre: usuario?.nombre || 'Operador',
@@ -167,19 +169,20 @@ export default function ControlFacturacion() {
     if (!ticketElement) return;
 
     try {
-      const dataUrl = await toPng(ticketElement, { cacheBust: true, pixelRatio: 2, backgroundColor: '#ffffff' });
+      const dataUrl = await toPng(ticketElement, { cacheBust: true, pixelRatio: 3, backgroundColor: 'transparent' });
+      
       const link = document.createElement('a');
       link.download = `Comprobante_${ticketData.numeroProforma}.png`;
       link.href = dataUrl;
       link.click();
 
       const telefonoLimpio = (ticketData.clienteTelefono || '').replace(/[^0-9]/g, '');
-      const texto = encodeURIComponent(`Hola *${ticketData.clienteNombre}*, adjunto el comprobante de su carga #${ticketData.numeroProforma} por un total de $${ticketData.totalUSD.toFixed(2)} USD (C$ ${ticketData.totalNIO.toFixed(2)} NIO). ¡Gracias por su preferencia!`);
+      const texto = encodeURIComponent(`Hola *${ticketData.clienteNombre}*, adjunto el comprobante oficial de su carga #${ticketData.numeroProforma} por un valor de $${ticketData.totalUSD.toFixed(2)} USD (C$ ${ticketData.totalNIO.toFixed(2)} NIO). ¡Gracias por su preferencia!`);
       
       window.open(`https://api.whatsapp.com/send?phone=${telefonoLimpio}&text=${texto}`, '_blank');
     } catch (err) {
       console.error('Error al generar la imagen para WhatsApp:', err);
-      alert('No se pudo generar la imagen del ticket automáticamente.');
+      alert('No se pudo generar la imagen del comprobante.');
     }
   };
 
@@ -205,7 +208,7 @@ export default function ControlFacturacion() {
         </div>
       </div>
 
-      {/* KPI Cards Dinámicos con Hover Lift */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
         <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
           <div className="flex items-center justify-between text-amber-700 mb-2">
@@ -263,7 +266,6 @@ export default function ControlFacturacion() {
       {/* Barra de Filtros y Búsqueda */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
         
-        {/* Toggle de Estados */}
         <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setFiltroEstado('PENDIENTE_PAGO')}
@@ -299,7 +301,6 @@ export default function ControlFacturacion() {
           </button>
         </div>
 
-        {/* Buscador */}
         <form onSubmit={handleBuscar} className="w-full md:w-80 relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 absolute left-3" />
           <input
@@ -354,7 +355,6 @@ export default function ControlFacturacion() {
                     <React.Fragment key={p.id}>
                       <tr className="hover:bg-slate-50/80 transition-colors duration-150">
                         
-                        {/* Proforma */}
                         <td className="py-3.5 px-4 font-mono font-bold text-brand">
                           <button
                             onClick={() => toggleExpandir(p.id)}
@@ -370,7 +370,6 @@ export default function ControlFacturacion() {
                           </div>
                         </td>
 
-                        {/* Cliente */}
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
                             {p.clienteNombre.includes('León') ? (
@@ -383,7 +382,6 @@ export default function ControlFacturacion() {
                           <div className="text-[10px] text-slate-400">{p.clienteTelefono}</div>
                         </td>
 
-                        {/* Paquetes / Peso */}
                         <td className="py-3.5 px-4">
                           <span className="font-semibold text-slate-700">{p.paquetes.length} paquetes</span>
                           <div className="text-[10px] font-bold text-slate-500 font-display">
@@ -391,12 +389,10 @@ export default function ControlFacturacion() {
                           </div>
                         </td>
 
-                        {/* Sucursal */}
                         <td className="py-3.5 px-4 text-slate-600 font-medium">
                           {p.sucursalDestino}
                         </td>
 
-                        {/* Total Multimoneda */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="font-bold font-display text-slate-900">
                             ${p.totalCobradoUSD.toFixed(2)} USD
@@ -406,7 +402,6 @@ export default function ControlFacturacion() {
                           </div>
                         </td>
 
-                        {/* Estado */}
                         <td className="py-3.5 px-4 text-center">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold transition-transform hover:scale-105 duration-150 ${
                             p.estado === 'FACTURADO'
@@ -427,7 +422,6 @@ export default function ControlFacturacion() {
                           </span>
                         </td>
 
-                        {/* Acciones */}
                         <td className="py-3.5 px-4 text-center">
                           <div className="flex items-center justify-center gap-1.5">
                             <button
@@ -468,7 +462,6 @@ export default function ControlFacturacion() {
 
                       </tr>
 
-                      {/* Desglose Detallado con Animación */}
                       {proformaExpandida === p.id && (
                         <tr className="bg-slate-50/90 border-b border-slate-200 animate-in fade-in slide-in-from-top-1 duration-150">
                           <td colSpan="7" className="p-4">
@@ -555,7 +548,7 @@ export default function ControlFacturacion() {
         )}
       </div>
 
-      {/* Modal de Liquidación / Cobro */}
+      {/* Modal de Liquidación */}
       {modalLiquidacion && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans animate-in zoom-in-95 duration-150">
@@ -603,9 +596,9 @@ export default function ControlFacturacion() {
         </div>
       )}
 
-      {/* Modal de Comprobante / Ticket */}
+      {/* Modal de Comprobante / Ticket Digital Tipo Bancario */}
       {ticketData && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
           
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
@@ -621,8 +614,6 @@ export default function ControlFacturacion() {
                 color: #000000 !important;
                 font-family: 'Courier New', Courier, monospace !important;
                 font-weight: 700 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
               }
               #ticket-termico-impresion {
                 position: absolute;
@@ -646,105 +637,158 @@ export default function ControlFacturacion() {
             }
           `}} />
 
-          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+          {/* Contenedor Modal con scroll de pantalla */}
+          <div className="w-full max-w-[390px] flex flex-col my-auto max-h-[95vh] overflow-y-auto no-scrollbar rounded-[32px] shadow-2xl">
             
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center no-print">
-              <h3 className="font-bold font-display text-sm flex items-center gap-2">
-                <Printer className="w-4 h-4 text-brand" /> Comprobante / Factura #{ticketData.numeroProforma}
-              </h3>
-              <button 
-                onClick={() => setTicketData(null)}
-                className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Ticket Digital */}
-            <div className="p-5 overflow-y-auto font-mono text-xs text-slate-800 space-y-3 bg-slate-50 select-text" id="ticket-digital-pantalla">
-              <div className="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
-                <img 
-                  src="/Logo.png" 
-                  alt="Abba Xpress Logo" 
-                  className="w-24 h-auto mx-auto mb-1 object-contain" 
-                />
-                <h4 className="font-bold text-base font-display text-slate-900">ABBA XPRESS</h4>
-                <p className="text-[10px] text-slate-500 font-semibold">ERP Logístico Multimoneda</p>
-                <p className="text-[11px] font-bold text-brand">{ticketData.sucursalNombre}</p>
-                <p className="text-[10px] text-slate-400">{ticketData.fecha}</p>
+            {/* 1. TARJETA DIGITAL TIPO BANCA MÓVIL (Exportable íntegra a PNG para WhatsApp) */}
+            <div 
+              id="ticket-digital-pantalla"
+              className="w-full text-white relative overflow-visible font-sans"
+              style={{
+                background: 'linear-gradient(180deg, #424698 0%, #5157b5 30%, #656cc5 100%)',
+                padding: '24px 18px 0px 18px'
+              }}
+            >
+              {/* Header con Logo y Marca */}
+              <div className="flex flex-col items-center justify-center text-center space-y-1 pb-5">
+                <div className="p-2 bg-white rounded-2xl shadow-md mb-1 flex items-center justify-center">
+                  <img 
+                    src="/Logo.png" 
+                    alt="Abba Xpress Logo" 
+                    className="h-8 w-auto object-contain" 
+                  />
+                </div>
+                <h3 className="font-display font-black tracking-wider text-base text-white">ABBA XPRESS</h3>
+                <p className="text-[11px] text-brand-100 font-medium">{ticketData.sucursalNombre}</p>
               </div>
 
-              <div className="space-y-1 border-b border-dashed border-slate-300 pb-3 text-[11px] bg-white p-3 rounded-xl border">
-                <p><strong>Proforma:</strong> <span className="text-brand">#{ticketData.numeroProforma}</span></p>
-                <p><strong>Cliente:</strong> {ticketData.clienteNombre}</p>
-                <p><strong>Teléfono:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
-                <p><strong>Atendido por:</strong> {ticketData.usuarioNombre}</p>
-                <p><strong>Condición:</strong> <span className={`font-bold px-2 py-0.5 rounded text-[10px] ${ticketData.metodoPago === 'CREDITO' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                  {ticketData.metodoPago === 'CREDITO' ? '📦 CREDITO (PENDIENTE)' : `💵 PAGADO (${ticketData.metodoPago})`}
-                </span></p>
-              </div>
+              {/* TARJETA BLANCA FLOTANTE (Sin scrollbars internas, altura dinámica) */}
+              <div className="bg-white rounded-t-[28px] text-slate-800 pt-7 pb-6 px-5 relative shadow-xl">
+                
+                {/* Badge flotante verde con check */}
+                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 w-12 h-12 bg-emerald-500 rounded-full border-4 border-white flex items-center justify-center shadow-lg">
+                  <Check className="w-6 h-6 text-white stroke-[3]" />
+                </div>
 
-              <div className="space-y-2 border-b border-dashed border-slate-300 pb-3">
-                <p className="font-bold text-[10px] uppercase text-slate-500">Detalle de Paquetes ({ticketData.paquetes.length})</p>
-                {ticketData.paquetes.map((p, idx) => (
-                  <div key={idx} className="text-[11px] space-y-0.5 bg-white p-2.5 rounded-lg border border-slate-200">
-                    <div className="flex justify-between font-bold text-slate-900">
-                      <span>{p.tracking || 'TRK-GEN'}</span>
-                      <span className="text-emerald-600">${(p.subtotalUSD !== undefined ? p.subtotalUSD : p.subtotal)?.toFixed(2) || '0.00'} USD</span>
+                {/* Fecha y Cliente */}
+                <div className="text-center space-y-1 pt-1">
+                  <p className="text-[11px] text-slate-400 capitalize font-medium">
+                    {ticketData.fecha}
+                  </p>
+                  <h4 className="text-base font-black text-slate-900 tracking-tight">
+                    {ticketData.clienteNombre}
+                  </h4>
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    {ticketData.metodoPago === 'CREDITO' ? 'Carga registrada a crédito' : 'Comprobante de Entrega & Cobro'}
+                  </p>
+                </div>
+
+                {/* Monto Principal Destacado */}
+                <div className="flex items-center justify-center gap-2 py-3.5 my-2 border-y border-slate-100">
+                  <span className="px-2 py-0.5 bg-brand-50 text-brand font-black rounded-lg text-xs">
+                    $ USD
+                  </span>
+                  <span className="text-3xl font-black font-sans text-slate-900 tracking-tight">
+                    {ticketData.totalUSD.toFixed(2)}
+                  </span>
+                </div>
+
+                {/* Equivalente en Córdobas */}
+                <div className="text-center pb-3">
+                  <span className="text-[11px] font-bold text-brand bg-brand-50 px-3 py-1 rounded-full border border-brand-100 inline-block">
+                    Equivalente: C$ {ticketData.totalNIO.toFixed(2)} NIO (T/C: {ticketData.tipoCambioAplicado.toFixed(4)})
+                  </span>
+                </div>
+
+                {/* Metadatos de Factura */}
+                <div className="space-y-2 text-xs pt-1">
+                  <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                    <span>Proforma / Factura:</span>
+                    <span className="font-mono font-bold text-brand text-xs">#{ticketData.numeroProforma}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                    <span>Condición de Pago:</span>
+                    <span className="font-semibold text-slate-800">
+                      {ticketData.metodoPago === 'CREDITO' ? '📦 Crédito (Pendiente)' : `💵 ${ticketData.metodoPago}`}
+                    </span>
+                  </div>
+
+                  {ticketData.clienteTelefono && (
+                    <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                      <span>Teléfono WhatsApp:</span>
+                      <span className="font-mono font-medium text-slate-700">{ticketData.clienteTelefono}</span>
                     </div>
-                    <div className="text-[10px] text-slate-500 flex justify-between">
-                      <span>{p.label || 'General'} ({p.pesoLbs} lbs - {p.viaEnvio})</span>
+                  )}
+
+                  {/* Detalle Completo de Bultos (Sin max-height ni overflow) */}
+                  <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <span>Bultos en Carga ({ticketData.paquetes.length})</span>
+                      <span>{ticketData.totalLbs.toFixed(2)} lbs</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {ticketData.paquetes.map((p, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl text-[11px] border border-slate-100">
+                          <div className="min-w-0 pr-2">
+                            <p className="font-mono font-bold text-slate-900 truncate">{p.tracking || 'TRK-GEN'}</p>
+                            <p className="text-[10px] text-slate-500 truncate">{p.label || 'General'} • {p.pesoLbs} lb</p>
+                          </div>
+                          <span className="font-black font-sans text-slate-900 shrink-0 text-xs">
+                            ${(p.subtotalUSD !== undefined ? p.subtotalUSD : p.subtotal)?.toFixed(2) || '0.00'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
 
-              {ticketData.cargoDelivery > 0 && (
-                <div className="flex justify-between text-[11px] px-1">
-                  <span>Cargo Delivery:</span>
-                  <span className="font-bold">${ticketData.cargoDelivery.toFixed(2)} USD</span>
+                  {ticketData.cargoDelivery > 0 && (
+                    <div className="flex justify-between items-center text-slate-600 text-[11px] pt-1">
+                      <span>Delivery local:</span>
+                      <span className="font-bold text-slate-900">+${ticketData.cargoDelivery.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {ticketData.descuento > 0 && (
+                    <div className="flex justify-between items-center text-red-600 text-[11px]">
+                      <span>Descuento aplicado:</span>
+                      <span className="font-bold">-${ticketData.descuento.toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Operador de Ventanilla */}
+                  <div className="text-center pt-3 border-t border-dashed border-slate-200">
+                    <p className="text-[10px] text-slate-400">Atendido en ventanilla por:</p>
+                    <p className="text-[11px] font-bold text-slate-800">{ticketData.usuarioNombre}</p>
+                  </div>
                 </div>
-              )}
 
-              {ticketData.descuento > 0 && (
-                <div className="flex justify-between text-[11px] px-1 text-red-600">
-                  <span>Descuento Aplicado:</span>
-                  <span className="font-bold">-${ticketData.descuento.toFixed(2)} USD</span>
+                {/* Borde Troquelado Inferior SVG Nítido */}
+                <div className="absolute bottom-[-11px] left-0 w-full overflow-hidden leading-none z-10">
+                  <svg viewBox="0 0 390 12" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-3">
+                    <path d="M0 0 C 7.5 12, 17.5 12, 25 0 C 32.5 12, 42.5 12, 50 0 C 57.5 12, 67.5 12, 75 0 C 82.5 12, 92.5 12, 100 0 C 107.5 12, 117.5 12, 125 0 C 132.5 12, 142.5 12, 150 0 C 157.5 12, 167.5 12, 175 0 C 182.5 12, 192.5 12, 200 0 C 207.5 12, 217.5 12, 225 0 C 232.5 12, 242.5 12, 250 0 C 257.5 12, 267.5 12, 275 0 C 282.5 12, 292.5 12, 300 0 C 307.5 12, 317.5 12, 325 0 C 332.5 12, 342.5 12, 350 0 C 357.5 12, 367.5 12, 375 0 C 382.5 12, 390 12, 390 0 L390 0 L0 0 Z" fill="#ffffff"/>
+                  </svg>
                 </div>
-              )}
-
-              <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-right bg-slate-900 text-white p-3 rounded-xl">
-                <p className="text-[10px] text-slate-400">T/C Oficial: C$ {ticketData.tipoCambioAplicado.toFixed(4)}</p>
-                <p className="text-sm font-black font-display text-emerald-400">
-                  TOTAL: ${ticketData.totalUSD.toFixed(2)} USD
-                </p>
-                <p className="text-xs font-black font-display text-brand-300">
-                  TOTAL NIO: C$ {ticketData.totalNIO.toFixed(2)} NIO
-                </p>
-              </div>
-
-              <div className="text-center text-[10px] text-slate-400 pt-1">
-                <p>¡Gracias por preferir Abba Xpress!</p>
-                <p>Comprobante Oficial.</p>
               </div>
             </div>
 
-            {/* Ticket Térmico Físico */}
+            {/* 2. TICKET TÉRMICO FÍSICO (Impresión POS 80mm B&N) */}
             <div id="ticket-termico-impresion">
               <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2.5">
                 <img src="/Logo.png" alt="Logo" className="w-28 h-auto mx-auto mb-1 filter grayscale contrast-125" />
                 <h4 className="text-base font-black tracking-wider">ABBA XPRESS</h4>
-                <p className="text-[10px] uppercase">ERP LOGISTICO MULTIMONEDA</p>
+                <p className="text-[10px] uppercase">Servicio de logistica</p>
                 <p className="text-[11px]">{ticketData.sucursalNombre}</p>
                 <p className="text-[10px]">{ticketData.fecha}</p>
               </div>
 
               <div className="space-y-1 border-b border-dashed border-black pb-2.5 text-[11px]">
-                <p><strong>Proforma:</strong> #{ticketData.numeroProforma}</p>
-                <p><strong>Cliente:</strong> {ticketData.clienteNombre}</p>
-                <p><strong>Teléfono:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
-                <p><strong>Atendido:</strong> {ticketData.usuarioNombre}</p>
-                <p><strong>Condición:</strong> {ticketData.metodoPago}</p>
+                <p><strong>PROFORMA:</strong> #{ticketData.numeroProforma}</p>
+                <p><strong>CLIENTE:</strong> {ticketData.clienteNombre}</p>
+                <p><strong>TEL:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
+                <p><strong>ATENDIDO:</strong> {ticketData.usuarioNombre}</p>
+                <p><strong>CONDICION:</strong> {ticketData.metodoPago}</p>
               </div>
 
               <div className="space-y-2 border-b border-dashed border-black pb-2.5">
@@ -790,10 +834,10 @@ export default function ControlFacturacion() {
             </div>
 
             {/* Footer de Acciones */}
-            <div className="p-4 bg-white border-t border-slate-200 flex gap-2 no-print">
+            <div className="p-4 bg-slate-900 border-t border-slate-800 flex gap-2 no-print shadow-2xl z-20">
               <button
                 onClick={() => setTicketData(null)}
-                className="w-1/3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs active:scale-95"
+                className="w-1/3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition cursor-pointer text-xs active:scale-95"
               >
                 Cerrar
               </button>

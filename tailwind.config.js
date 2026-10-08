@@ -7,8 +7,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-        display: ['"Space Grotesk"', 'sans-serif'], // Ideal para códigos de tracking, totales y métricas
+        sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['"Space Grotesk"', 'sans-serif'],
       },
       colors: {
         brand: {
@@ -17,7 +17,7 @@ export default {
           200: '#cecef2',
           300: '#ababeb',
           400: '#8487e0',
-          DEFAULT: '#656cc5', // Tu color principal
+          DEFAULT: '#656cc5',
           600: '#5157b5',
           700: '#424698',
           800: '#383b7c',
