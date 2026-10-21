@@ -18,7 +18,8 @@ import {
   BarChart3,
   ShieldCheck,
   Menu,
-  X
+  X,
+  Landmark
 } from 'lucide-react';
 
 export default function Layout() {
@@ -28,10 +29,8 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    // Verificar si ya vio el tutorial por primera vez
     const tourVisto = localStorage.getItem('abba_tutorial_visto');
     if (!tourVisto) {
-      // Pequeño delay para que cargue la interfaz antes de lanzar el tour
       const timer = setTimeout(() => setRunTour(true), 1000);
       return () => clearTimeout(timer);
     }
@@ -45,6 +44,7 @@ export default function Layout() {
   const navItems = [
     { nombre: 'Recepción de Carga', ruta: '/', icono: PackagePlus },
     { nombre: 'Cuentas & Facturación', ruta: '/facturacion', icono: Receipt },
+    { nombre: 'Gestión de Caja', ruta: '/caja', icono: Landmark },
     { nombre: 'Gastos & Utilidades', ruta: '/finanzas', icono: TrendingUp },
     { nombre: 'Exportación USA (FedEx)', ruta: '/exportacion', icono: Globe },
     { nombre: 'Directorio Clientes', ruta: '/clientes', icono: Users },
@@ -83,19 +83,19 @@ export default function Layout() {
       {/* Backdrop Traslúcido para Móviles */}
       {sidebarOpen && (
         <div 
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setSidebarOpen(false)} 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
         />
       )}
 
-      {/* Sidebar Corporativo (Plegable en Móvil / Fijo en Escritorio) */}
+      {/* Sidebar Corporativo */}
       <aside 
         className={`fixed md:static top-0 left-0 bottom-0 z-50 w-64 bg-brand-darker text-slate-300 flex flex-col border-r border-slate-800 select-none print:hidden transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
         
-        {/* Logo & Marca (Visible en Sidebar) */}
+        {/* Logo & Marca */}
         <div className="p-4 flex items-center justify-between border-b border-slate-800/80 bg-brand-dark">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-lg overflow-hidden">
@@ -107,9 +107,8 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* Botón Cerrar exclusivo para móvil dentro del Sidebar */}
           <button 
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => setSidebarOpen(false)} 
             className="md:hidden p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
           >
             <X className="w-5 h-5" />
@@ -139,7 +138,7 @@ export default function Layout() {
                 key={item.ruta}
                 to={item.ruta}
                 end={item.ruta === '/'}
-                onClick={() => setSidebarOpen(false)} // Cierra el menú al hacer clic en un ítem en celular
+                onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                     isActive
@@ -174,6 +173,7 @@ export default function Layout() {
                 <UserCog className="w-4 h-4 shrink-0" />
                 <span>Gestión de Usuarios</span>
               </NavLink>
+
               <NavLink
                 to="/configuracion"
                 onClick={() => setSidebarOpen(false)}
@@ -205,7 +205,7 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Botones inferiores: Ver Tutorial & Cerrar Sesión */}
+        {/* Botones inferiores */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">
           <button
             onClick={() => {

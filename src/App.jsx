@@ -15,6 +15,8 @@ import ImpresionRotulos from './components/ImpresionRotulos';
 import RecepcionTransferencias from './components/RecepcionTransferencias';
 import ReportesFinancieros from './components/ReportesFinancieros'; 
 import AuditoriaMovimientos from './components/AuditoriaMovimientos';
+import GestionCaja from './components/GestionCaja';
+
 
 export default function App() {
   return (
@@ -48,6 +50,7 @@ export default function App() {
             <Route path="/transito" element={<RecepcionTransferencias />} />
             <Route path="/reportes" element={<ReportesFinancieros />} />
             <Route path="/auditoria" element={<AuditoriaMovimientos />} />
+            <Route path="/caja" element={<GestionCaja />} />
           </Route>
 
           {/* Redirección por defecto para rutas no encontradas */}

@@ -12,15 +12,13 @@ import {
   Plane,
   Ship,
   Box,
-  CreditCard,
+  Truck,
   Printer,
-  MessageCircle,
   X,
   Download,
   Upload
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
 import { clienteService } from '../services/clienteService';
 import { proformaService } from '../services/proformaService';
@@ -30,6 +28,7 @@ export default function RecepcionCarga() {
   const { usuario } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState('');
   const [sucursalDestinoId, setSucursalDestinoId] = useState('');
   const [clienteActual, setClienteActual] = useState(null);
@@ -46,19 +45,14 @@ export default function RecepcionCarga() {
   const [acordeonCliente, setAcordeonCliente] = useState(true);
   const [acordeonPaquetes, setAcordeonPaquetes] = useState(true);
 
-  const [cargoDelivery, setCargoDelivery] = useState(0);
-  const [descuento, setDescuento] = useState(0);
-  const [tipoCambio, setTipoCambio] = useState(36.6243);
-  const [metodoPago, setMetodoPago] = useState('CREDITO');
-
   const [paquetes, setPaquetes] = useState([
     {
       id: Date.now(),
       tracking: '',
-      label: '',
       pesoLbs: 1,
       viaEnvio: 'AEREO',
       categoria: 'GENERAL',
+      proveedorId: '',
       tarifaUnitario: 7.00
     }
   ]);
@@ -73,14 +67,16 @@ export default function RecepcionCarga() {
 
   const cargarDatosIniciales = async () => {
     try {
-      const [clientesData, sucursalesRes, configRes] = await Promise.all([
+      const [clientesData, sucursalesRes, configRes, provRes] = await Promise.all([
         clienteService.obtenerTodos(),
         api.get('/sucursales'),
-        api.get('/configuracion')
+        api.get('/configuracion'),
+        api.get('/proveedores').catch(() => ({ data: [] }))
       ]);
 
       setClientes(clientesData || []);
       setSucursales(sucursalesRes.data || []);
+      setProveedores(provRes.data || []);
 
       if (clientesData && clientesData.length > 0) {
         setClienteSeleccionadoId(clientesData[0].id);
@@ -90,9 +86,10 @@ export default function RecepcionCarga() {
 
       if (configRes.data) {
         setConfigGlobal(configRes.data);
-        setTipoCambio(configRes.data.tipoCambioNIO || 36.6243);
+        const provDefault = provRes.data?.length > 0 ? provRes.data[0].id : '';
         setPaquetes(prev => prev.map(p => ({
           ...p,
+          proveedorId: provDefault,
           tarifaUnitario: configRes.data.tarifaAereoGeneral || 7.00
         })));
       }
@@ -103,7 +100,7 @@ export default function RecepcionCarga() {
 
   const aplicarReglaDestino = (cliente, listaSucursales) => {
     if (!cliente || !listaSucursales) return;
-    if (cliente.tipoCliente === 'SUCURSAL_B2B') {
+    if (cliente.tipoCliente === 'SUBAGENCIA' || cliente.nombre.toLowerCase().includes('león')) {
       const sucLeon = listaSucursales.find(s => s.id === 3);
       setSucursalDestinoId(sucLeon ? sucLeon.id : 3);
     } else {
@@ -123,95 +120,16 @@ export default function RecepcionCarga() {
         let nuevaTarifa = p.tarifaUnitario;
         if (p.categoria === 'GENERAL' || p.categoria === 'PALLET') {
           nuevaTarifa = p.viaEnvio === 'MARITIMO' ? encontrado.tarifaMaritimo : encontrado.tarifaAereo;
+        } else if (p.categoria === 'CELULAR') {
+          nuevaTarifa = encontrado.tarifaCelularFija || configGlobal.tarifaCelularFija;
+        } else if (p.categoria === 'SMART_TV') {
+          nuevaTarifa = p.viaEnvio === 'MARITIMO' 
+            ? (encontrado.tarifaTvMaritimo || configGlobal.tarifaTvMaritimo) 
+            : (encontrado.tarifaTvAereo || configGlobal.tarifaTvAereo);
         }
         return { ...p, tarifaUnitario: nuevaTarifa };
       }));
     }
-  };
-
-  const descargarPlantillaExcel = () => {
-    const dataEjemplo = [
-      {
-        Tracking: 'TBA1020304050',
-        Label: 'Ropa y Zapatos',
-        PesoLbs: 4.5,
-        ViaEnvio: 'AEREO',
-        Categoria: 'GENERAL',
-        TarifaUnitario: clienteActual ? clienteActual.tarifaAereo : 7.00
-      },
-      {
-        Tracking: '1Z9999999999',
-        Label: 'Smart TV 55"',
-        PesoLbs: 32.0,
-        ViaEnvio: 'MARITIMO',
-        Categoria: 'SMART_TV',
-        TarifaUnitario: 3.50
-      },
-      {
-        Tracking: '940011120202',
-        Label: 'iPhone 15 Pro',
-        PesoLbs: 1.0,
-        ViaEnvio: 'AEREO',
-        Categoria: 'CELULAR',
-        TarifaUnitario: 35.00
-      }
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(dataEjemplo);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'PlantillaCarga');
-    XLSX.writeFile(workbook, 'Plantilla_Ingreso_Carga_AbbaXpress.xlsx');
-  };
-
-  const handleImportarExcel = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target.result;
-        const workbook = XLSX.read(bstr, { type: 'binary' });
-        const wsname = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[wsname];
-        const json = XLSX.utils.sheet_to_json(worksheet);
-
-        if (json.length === 0) {
-          alert('El archivo Excel no contiene datos válidos.');
-          return;
-        }
-
-        const paquetesCargados = json.map((row, idx) => {
-          const via = (row.ViaEnvio || row.viaEnvio || 'AEREO').toString().toUpperCase().trim();
-          const cat = (row.Categoria || row.categoria || 'GENERAL').toString().toUpperCase().trim();
-          
-          let tarifaSugerida = parseFloat(row.TarifaUnitario || row.tarifaUnitario);
-          if (isNaN(tarifaSugerida) || tarifaSugerida <= 0) {
-            tarifaSugerida = clienteActual 
-              ? (via === 'MARITIMO' ? clienteActual.tarifaMaritimo : clienteActual.tarifaAereo)
-              : (via === 'MARITIMO' ? configGlobal.tarifaMaritimoGeneral : configGlobal.tarifaAereoGeneral);
-          }
-
-          return {
-            id: Date.now() + idx,
-            tracking: (row.Tracking || row.tracking || '').toString().trim(),
-            label: (row.Label || row.label || '').toString().trim(),
-            pesoLbs: parseFloat(row.PesoLbs || row.pesoLbs) || 1,
-            viaEnvio: via === 'MARITIMO' ? 'MARITIMO' : 'AEREO',
-            categoria: ['GENERAL', 'SMART_TV', 'CELULAR', 'PALLET'].includes(cat) ? cat : 'GENERAL',
-            tarifaUnitario: tarifaSugerida
-          };
-        });
-
-        setPaquetes(paquetesCargados);
-        setMensaje({ tipo: 'exito', texto: `Se importaron ${paquetesCargados.length} paquetes desde el archivo Excel.` });
-      } catch (err) {
-        console.error('Error al procesar Excel:', err);
-        alert('Ocurrió un error al leer el archivo de Excel. Asegúrate de usar la plantilla estándar.');
-      }
-    };
-    reader.readAsBinaryString(file);
-    e.target.value = null;
   };
 
   const agregarPaquete = () => {
@@ -225,10 +143,10 @@ export default function RecepcionCarga() {
       {
         id: Date.now(),
         tracking: '',
-        label: '',
         pesoLbs: 1,
         viaEnvio: 'AEREO',
         categoria: 'GENERAL',
+        proveedorId: proveedores[0]?.id || '',
         tarifaUnitario: tarifaSugerida
       }
     ]);
@@ -248,9 +166,11 @@ export default function RecepcionCarga() {
 
         if (campo === 'categoria' || campo === 'viaEnvio') {
           if (actualizado.categoria === 'CELULAR') {
-            actualizado.tarifaUnitario = configGlobal.tarifaCelularFija;
+            actualizado.tarifaUnitario = clienteActual?.tarifaCelularFija || configGlobal.tarifaCelularFija;
           } else if (actualizado.categoria === 'SMART_TV') {
-            actualizado.tarifaUnitario = actualizado.viaEnvio === 'MARITIMO' ? configGlobal.tarifaTvMaritimo : configGlobal.tarifaTvAereo;
+            actualizado.tarifaUnitario = actualizado.viaEnvio === 'MARITIMO'
+              ? (clienteActual?.tarifaTvMaritimo || configGlobal.tarifaTvMaritimo)
+              : (clienteActual?.tarifaTvAereo || configGlobal.tarifaTvAereo);
           } else {
             actualizado.tarifaUnitario = clienteActual
               ? (actualizado.viaEnvio === 'MARITIMO' ? clienteActual.tarifaMaritimo : clienteActual.tarifaAereo)
@@ -266,14 +186,13 @@ export default function RecepcionCarga() {
   const calcularSubtotalPaquete = (pkg) => {
     const peso = parseFloat(pkg.pesoLbs) || 0;
     const tarifa = parseFloat(pkg.tarifaUnitario) || 0;
-    if (pkg.categoria === 'CELULAR') return tarifa;
+    if (pkg.categoria === 'CELULAR' || pkg.categoria === 'PALLET') return tarifa;
     return peso * tarifa;
   };
 
   const subtotalPaquetesUSD = paquetes.reduce((acc, p) => acc + calcularSubtotalPaquete(p), 0);
   const totalLibras = paquetes.reduce((acc, p) => acc + (parseFloat(p.pesoLbs) || 0), 0);
-  const totalCobradoUSD = Math.max(0, subtotalPaquetesUSD + (parseFloat(cargoDelivery) || 0) - (parseFloat(descuento) || 0));
-  const totalCobradoNIO = totalCobradoUSD * (parseFloat(tipoCambio) || 36.6243);
+  const totalCobradoNIO = subtotalPaquetesUSD * (configGlobal.tipoCambioNIO || 36.6243);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -282,24 +201,20 @@ export default function RecepcionCarga() {
 
     const payload = {
       clienteId: parseInt(clienteSeleccionadoId),
-      sucursalDestinoId: clienteActual?.tipoCliente === 'SUCURSAL_B2B' ? parseInt(sucursalDestinoId) : (usuario?.sucursalId || 1),
-      cargoDeliveryUSD: parseFloat(cargoDelivery) || 0,
-      descuentoUSD: parseFloat(descuento) || 0,
-      tipoCambio: parseFloat(tipoCambio) || configGlobal.tipoCambioNIO,
-      metodoPago: metodoPago,
+      sucursalDestinoId: parseInt(sucursalDestinoId) || usuario?.sucursalId || 1,
       paquetes: paquetes.map((p) => ({
         tracking: p.tracking || `TRK-${Date.now().toString().slice(-6)}`,
-        label: p.label,
         pesoLbs: parseFloat(p.pesoLbs) || 0,
         viaEnvio: p.viaEnvio,
         categoria: p.categoria,
+        proveedorId: p.proveedorId ? parseInt(p.proveedorId) : null,
         tarifaManual: parseFloat(p.tarifaUnitario) || 0
       }))
     };
 
     try {
       const res = await proformaService.crear(payload);
-      const numeroGenerado = res?.numero || res?.data?.numero || 'ABBA-1001';
+      const numeroGenerado = res?.numeroProforma || res?.numero || 'ABBA-1001';
 
       setTicketData({
         numeroProforma: numeroGenerado,
@@ -308,33 +223,28 @@ export default function RecepcionCarga() {
         clienteTelefono: clienteActual?.telefono || '',
         usuarioNombre: usuario?.nombre || 'Operador',
         sucursalNombre: usuario?.sucursalNombre || 'Sede Central',
-        metodoPago: metodoPago,
-        cargoDelivery: parseFloat(cargoDelivery) || 0,
-        descuento: parseFloat(descuento) || 0,
-        tipoCambioAplicado: parseFloat(tipoCambio) || configGlobal.tipoCambioNIO,
         totalLibras,
-        totalUSD: totalCobradoUSD,
+        totalUSD: subtotalPaquetesUSD,
         totalNIO: totalCobradoNIO,
+        tipoCambioAplicado: configGlobal.tipoCambioNIO,
         paquetes: paquetes.map(p => ({
           ...p,
           subtotal: calcularSubtotalPaquete(p)
         }))
       });
 
-      setMensaje({ tipo: 'exito', texto: `Carga procesada con éxito. Proforma: ${numeroGenerado}` });
+      setMensaje({ tipo: 'exito', texto: `Recepción ingresada a crédito con éxito. Proforma: ${numeroGenerado}` });
       setPaquetes([
         {
           id: Date.now(),
           tracking: '',
-          label: '',
           pesoLbs: 1,
           viaEnvio: 'AEREO',
           categoria: 'GENERAL',
+          proveedorId: proveedores[0]?.id || '',
           tarifaUnitario: clienteActual ? clienteActual.tarifaAereo : configGlobal.tarifaAereoGeneral
         }
       ]);
-      setCargoDelivery(0);
-      setDescuento(0);
     } catch (error) {
       console.error('Error detallado:', error);
       setMensaje({
@@ -346,33 +256,6 @@ export default function RecepcionCarga() {
     }
   };
 
-  const imprimirTicket = () => {
-    window.print();
-  };
-
-  const enviarWhatsAppImagen = async () => {
-    const ticketElement = document.getElementById('ticket-digital-pantalla');
-    if (!ticketElement) return;
-
-    try {
-      const dataUrl = await toPng(ticketElement, { cacheBust: true, pixelRatio: 2, backgroundColor: '#ffffff' });
-      const link = document.createElement('a');
-      link.download = `Proforma_${ticketData.numeroProforma}.png`;
-      link.href = dataUrl;
-      link.click();
-
-      const codigoPais = clienteActual?.codigoPais || '+505';
-      const telefonoSolo = (ticketData.clienteTelefono || '').replace(/[^0-9]/g, '');
-      const telefonoLimpio = `${codigoPais.replace(/[^0-9]/g, '')}${telefonoSolo}`;
-      const texto = encodeURIComponent(`Hola *${ticketData.clienteNombre}*, adjunto la imagen del comprobante de su carga #${ticketData.numeroProforma} por un valor total de $${ticketData.totalUSD.toFixed(2)} USD (C$ ${ticketData.totalNIO.toFixed(2)} NIO). Gracias por su preferencia.`);
-      
-      window.open(`https://api.whatsapp.com/send?phone=${telefonoLimpio}&text=${texto}`, '_blank');
-    } catch (err) {
-      console.error('Error al generar la imagen para WhatsApp:', err);
-      alert('No se pudo generar la imagen del ticket automáticamente.');
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
       
@@ -381,34 +264,11 @@ export default function RecepcionCarga() {
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
             <PackagePlus className="w-6 h-6 text-brand" />
-            Recepción e Ingreso de Carga
+            Recepción e Ingreso de Carga en Bodega
           </h1>
           <p className="text-xs text-slate-500">
-            Registro multipaquete, carga masiva desde Excel y liquidación
+            Ingreso oficial de bultos a crédito. El cargo de delivery se aplicará en ventanilla durante la entrega final.
           </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={descargarPlantillaExcel}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer"
-            title="Descargar archivo modelo .xlsx"
-          >
-            <Download className="w-4 h-4 text-emerald-600" />
-            <span>Plantilla Excel</span>
-          </button>
-
-          <label className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm">
-            <Upload className="w-4 h-4" />
-            <span>Cargar Excel</span>
-            <input
-              type="file"
-              accept=".xlsx, .xls, .csv"
-              onChange={handleImportarExcel}
-              className="hidden"
-            />
-          </label>
         </div>
       </div>
 
@@ -423,7 +283,7 @@ export default function RecepcionCarga() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         
-        {/* Acordeón 1: Cliente y Configuración Base */}
+        {/* Acordeón 1: Cliente y Enrutamiento */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -432,90 +292,53 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">1</span>
-              <span>Información del Cliente y Liquidación</span>
+              <span>Información del Cliente y Enrutamiento</span>
             </div>
             {acordeonCliente ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
 
           {acordeonCliente && (
-            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-              
-              <div className={clienteActual?.tipoCliente === 'SUCURSAL_B2B' ? '' : 'lg:col-span-2'}>
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+              <div className="lg:col-span-2">
                 <label className="block text-slate-600 font-semibold mb-1">Cliente Consignatario</label>
                 <div className="relative flex items-center">
-                  {clienteActual?.tipoCliente === 'SUCURSAL_B2B' ? (
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3" />
-                  ) : (
-                    <User className="w-4 h-4 text-slate-400 absolute left-3" />
-                  )}
+                  <User className="w-4 h-4 text-slate-400 absolute left-3" />
                   <select
                     value={clienteSeleccionadoId}
                     onChange={handleCambioCliente}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-medium text-slate-800 focus:outline-none focus:border-brand"
+                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-semibold text-slate-800 focus:outline-none focus:border-brand"
                   >
                     {clientes.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.nombre} ({c.tipoCliente === 'SUCURSAL_B2B' ? 'Mayorista B2B' : 'Cliente Final'})
+                        {c.nombre} ({c.tipoCliente}) - Tel: {c.telefono}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {clienteActual?.tipoCliente === 'SUCURSAL_B2B' && (
-                <div>
-                  <label className="block text-slate-600 font-semibold mb-1">Sucursal Destino (B2B)</label>
-                  <div className="relative flex items-center">
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3" />
-                    <select
-                      value={sucursalDestinoId}
-                      onChange={(e) => setSucursalDestinoId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-bold text-slate-800 focus:outline-none focus:border-brand"
-                    >
-                      {sucursales.filter(s => s.id === 3).map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre} ({s.ciudad})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Método de Facturación</label>
+                <label className="block text-slate-600 font-semibold mb-1">Sucursal Destino</label>
                 <div className="relative flex items-center">
-                  <CreditCard className="w-4 h-4 text-slate-400 absolute left-3" />
+                  <Building className="w-4 h-4 text-slate-400 absolute left-3" />
                   <select
-                    value={metodoPago}
-                    onChange={(e) => setMetodoPago(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-medium text-slate-800 focus:outline-none focus:border-brand"
+                    value={sucursalDestinoId}
+                    onChange={(e) => setSucursalDestinoId(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-bold text-slate-800 focus:outline-none focus:border-brand"
                   >
-                    <option value="CREDITO">Pendiente de Cobro (Crédito)</option>
-                    <option value="EFECTIVO_USD">Efectivo ($ USD)</option>
-                    <option value="EFECTIVO_NIO">Efectivo (C$ NIO)</option>
-                    <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                    <option value="POS">Tarjeta / POS</option>
+                    {sucursales.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre} ({s.ciudad})
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Cargo Delivery ($ USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={cargoDelivery}
-                  onChange={(e) => setCargoDelivery(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-medium text-slate-800 focus:outline-none focus:border-brand"
-                  placeholder="0.00"
-                />
               </div>
             </div>
           )}
         </div>
 
-        {/* Acordeón 2: Paquetes Dinámicos */}
+        {/* Acordeón 2: Paquetes Dinámicos con Proveedor y UI mejorada */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -524,7 +347,7 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">2</span>
-              <span>Detalle Multipaquete ({paquetes.length} {paquetes.length === 1 ? 'ítem' : 'ítems'})</span>
+              <span>Bultos y Asignación de Proveedor ({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
             </div>
             {acordeonPaquetes ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -535,64 +358,61 @@ export default function RecepcionCarga() {
                 {paquetes.map((pkg) => (
                   <div 
                     key={pkg.id} 
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-slate-50 transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs"
+                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs"
                   >
-                    <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tracking #</label>
+                    <div className="lg:col-span-3">
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">N° Tracking / Guía</label>
                       <input
                         type="text"
+                        required
                         placeholder="Ej. TBA123456789"
                         value={pkg.tracking}
                         onChange={(e) => actualizarPaquete(pkg.id, 'tracking', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-semibold text-slate-800"
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800"
                       />
                     </div>
 
                     <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Rótulo / Label</label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Zapatos, Ropa"
-                        value={pkg.label}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'label', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800"
-                      />
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Proveedor / Courier</label>
+                      <select
+                        value={pkg.proveedorId}
+                        onChange={(e) => actualizarPaquete(pkg.id, 'proveedorId', e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs truncate"
+                      >
+                        {proveedores.map((prov) => (
+                          <option key={prov.id} value={prov.id}>{prov.nombre}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Categoría</label>
-                      <div className="relative flex items-center">
-                        <Box className="w-3.5 h-3.5 text-slate-400 absolute left-2" />
-                        <select
-                          value={pkg.categoria}
-                          onChange={(e) => actualizarPaquete(pkg.id, 'categoria', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-7 pr-1 font-medium text-slate-800 text-xs truncate"
-                        >
-                          <option value="GENERAL">General</option>
-                          <option value="SMART_TV">Smart TV</option>
-                          <option value="CELULAR">Celular</option>
-                          <option value="PALLET">Pallet</option>
-                        </select>
-                      </div>
+                      <select
+                        value={pkg.categoria}
+                        onChange={(e) => actualizarPaquete(pkg.id, 'categoria', e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs"
+                      >
+                        <option value="GENERAL">General</option>
+                        <option value="SMART_TV">Smart TV</option>
+                        <option value="CELULAR">Celular</option>
+                        <option value="PALLET">Pallet</option>
+                      </select>
                     </div>
 
                     <div className="lg:col-span-2">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Vía</label>
-                      <div className="relative flex items-center">
-                        {pkg.viaEnvio === 'AEREO' ? <Plane className="w-3.5 h-3.5 text-slate-400 absolute left-2" /> : <Ship className="w-3.5 h-3.5 text-slate-400 absolute left-2" />}
-                        <select
-                          value={pkg.viaEnvio}
-                          onChange={(e) => actualizarPaquete(pkg.id, 'viaEnvio', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-7 pr-1 font-medium text-slate-800 text-xs truncate"
-                        >
-                          <option value="AEREO">AÉREO</option>
-                          <option value="MARITIMO">MARÍTIMO</option>
-                        </select>
-                      </div>
+                      <select
+                        value={pkg.viaEnvio}
+                        onChange={(e) => actualizarPaquete(pkg.id, 'viaEnvio', e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 text-xs"
+                      >
+                        <option value="AEREO">AÉREO</option>
+                        <option value="MARITIMO">MARÍTIMO</option>
+                      </select>
                     </div>
 
                     <div className="lg:col-span-1">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (Lbs)</label>
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (lb)</label>
                       <input
                         type="number"
                         step="0.1"
@@ -603,32 +423,21 @@ export default function RecepcionCarga() {
                       />
                     </div>
 
-                    <div className="lg:col-span-1">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tarifa ($)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={pkg.tarifaUnitario}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'tarifaUnitario', e.target.value)}
-                        className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-bold text-amber-900 text-center"
-                      />
-                    </div>
-
                     <div className="lg:col-span-1 text-right">
                       <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Subtotal</label>
-                      <div className="text-xs font-bold font-display text-slate-900">
+                      <div className="text-xs font-bold font-display text-slate-900 pt-1">
                         ${calcularSubtotalPaquete(pkg).toFixed(2)}
                       </div>
                     </div>
 
+                    {/* Botón Eliminar con Alto Contraste (Rojo Sólido) */}
                     <div className="lg:col-span-1 flex justify-end">
                       <button
                         type="button"
                         onClick={() => eliminarPaquete(pkg.id)}
                         disabled={paquetes.length === 1}
-                        className="p-2 text-slate-400 hover:text-red-600 disabled:opacity-30 transition cursor-pointer"
-                        title="Eliminar fila"
+                        className="p-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg shadow-sm disabled:opacity-30 disabled:bg-slate-300 transition cursor-pointer"
+                        title="Eliminar este paquete"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -643,25 +452,25 @@ export default function RecepcionCarga() {
                 className="w-full py-2.5 border-2 border-dashed border-slate-300 hover:border-brand text-slate-600 hover:text-brand rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <PackagePlus className="w-4 h-4" />
-                <span>Agregar Otro Paquete a esta Carga</span>
+                <span>Agregar Bulto Adicional</span>
               </button>
             </div>
           )}
         </div>
 
-        {/* Resumen Multimoneda */}
+        {/* Resumen Final de Recepción */}
         <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-center md:text-left">
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total Peso</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Peso Total Carga</p>
               <p className="text-2xl font-black font-display text-white">{totalLibras.toFixed(2)} <span className="text-sm font-normal text-slate-400">lbs</span></p>
             </div>
             <div className="border-l border-slate-700 pl-6 sm:pl-10">
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total Dólares</p>
-              <p className="text-2xl font-black font-display text-emerald-400">${totalCobradoUSD.toFixed(2)} <span className="text-sm font-normal text-slate-400">USD</span></p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Flete USD (A Crédito)</p>
+              <p className="text-2xl font-black font-display text-emerald-400">${subtotalPaquetesUSD.toFixed(2)} <span className="text-sm font-normal text-slate-400">USD</span></p>
             </div>
             <div className="border-l border-slate-700 pl-6 sm:pl-10">
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Total Córdobas</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Equivalente Córdobas</p>
               <p className="text-2xl font-black font-display text-brand-300">C$ {totalCobradoNIO.toFixed(2)} <span className="text-sm font-normal text-slate-400">NIO</span></p>
             </div>
           </div>
@@ -672,154 +481,57 @@ export default function RecepcionCarga() {
             className="w-full md:w-auto px-8 py-4 bg-brand hover:bg-brand-600 text-white font-bold rounded-2xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <Save className="w-5 h-5" />
-            <span>{guardando ? 'Guardando...' : 'Guardar y Procesar Carga'}</span>
+            <span>{guardando ? 'Ingresando...' : 'Guardar Recepción (A Crédito)'}</span>
           </button>
         </div>
 
       </form>
 
-      {/* Modal Ticket */}
+      {/* Comprobante de Recepción (Sin delivery, detallando peso y tracking) */}
       {ticketData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media print {
-              @page {
-                size: 80mm auto;
-                margin: 0;
-              }
-              body * {
-                visibility: hidden;
-              }
-              #ticket-termico-impresion, #ticket-termico-impresion * {
-                visibility: visible;
-                color: #000000 !important;
-                font-family: 'Courier New', Courier, monospace !important;
-                font-weight: 700 !important;
-              }
-              #ticket-termico-impresion {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 74mm;
-                margin: 0;
-                padding: 1mm 2mm;
-                background: #ffffff !important;
-                font-size: 12px !important;
-                display: block !important;
-              }
-              #ticket-digital-pantalla, .no-print {
-                display: none !important;
-              }
-            }
-            @media screen {
-              #ticket-termico-impresion {
-                display: none !important;
-              }
-            }
-          `}} />
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-mono">
+            <div className="text-center border-b pb-3 space-y-1">
+              <h3 className="font-bold font-sans text-base text-slate-900">ABBA XPRESS</h3>
+              <p className="text-[10px] text-slate-500">COMPROBANTE DE RECEPCIÓN EN BODEGA</p>
+              <p className="text-xs font-bold text-brand">#{ticketData.numeroProforma}</p>
+            </div>
 
-          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center no-print">
-              <h3 className="font-bold font-display text-sm flex items-center gap-2">
-                <Printer className="w-4 h-4 text-brand" /> Ticket Generado con Éxito
-              </h3>
-              <button onClick={() => setTicketData(null)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
-                <X className="w-5 h-5" />
+            <div className="space-y-1 text-[11px]">
+              <p><strong>Cliente:</strong> {ticketData.clienteNombre}</p>
+              <p><strong>Teléfono:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
+              <p><strong>Condición:</strong> PENDIENTE DE COBRO</p>
+              <p><strong>Fecha:</strong> {ticketData.fecha}</p>
+            </div>
+
+            <div className="border-t border-b py-2 space-y-1">
+              <p className="text-[10px] font-bold uppercase text-slate-500">Bultos Recepcionados ({ticketData.paquetes.length})</p>
+              {ticketData.paquetes.map((p, idx) => (
+                <div key={idx} className="flex justify-between text-[11px]">
+                  <span className="font-bold">{p.tracking} ({p.pesoLbs} lb)</span>
+                  <span>${p.subtotal.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-right space-y-0.5">
+              <p className="text-sm font-black font-sans text-slate-900">TOTAL FLETE: ${ticketData.totalUSD.toFixed(2)} USD</p>
+              <p className="text-xs font-sans text-slate-500">C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={() => setTicketData(null)}
+                className="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition"
+              >
+                Cerrar
               </button>
-            </div>
-
-            {/* 1. TICKET DIGITAL (Para Pantalla y Captura de WhatsApp) */}
-            <div className="p-5 overflow-y-auto font-mono text-xs text-slate-800 space-y-3 bg-slate-50" id="ticket-digital-pantalla">
-              <div className="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
-                <h4 className="font-bold text-base font-display text-slate-900">ABBA XPRESS</h4>
-                <p className="text-[10px] text-slate-500 font-semibold">ERP Logístico Multimoneda</p>
-                <p className="text-[11px] font-bold text-brand">{ticketData.sucursalNombre}</p>
-                <p className="text-[10px] text-slate-400">{ticketData.fecha}</p>
-              </div>
-
-              <div className="space-y-1 border-b border-dashed border-slate-300 pb-3 text-[11px] bg-white p-3 rounded-xl border">
-                <p><strong>Proforma:</strong> <span className="text-brand">#{ticketData.numeroProforma}</span></p>
-                <p><strong>Cliente:</strong> {ticketData.clienteNombre}</p>
-                <p><strong>Teléfono:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
-                <p><strong>Atendido por:</strong> {ticketData.usuarioNombre}</p>
-              </div>
-
-              <div className="space-y-2 border-b border-dashed border-slate-300 pb-3">
-                <p className="font-bold text-[10px] uppercase text-slate-500">Detalle de Paquetes ({ticketData.paquetes.length})</p>
-                {ticketData.paquetes.map((p, idx) => (
-                  <div key={idx} className="text-[11px] space-y-0.5 bg-white p-2.5 rounded-lg border border-slate-200">
-                    <div className="flex justify-between font-bold text-slate-900">
-                      <span>{p.tracking || 'TRK-GEN'}</span>
-                      <span className="text-emerald-600">${p.subtotal.toFixed(2)} USD</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-right bg-slate-900 text-white p-3 rounded-xl">
-                <p className="text-sm font-black font-display text-emerald-400">TOTAL: ${ticketData.totalUSD.toFixed(2)} USD</p>
-                <p className="text-xs font-black font-display text-brand-300">TOTAL NIO: C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
-              </div>
-            </div>
-
-            {/* 2. TICKET TÉRMICO FÍSICO (Para Impresoras POS de 80mm en B&N) */}
-            <div id="ticket-termico-impresion">
-              <div className="text-center space-y-0.5 border-b border-dashed border-black pb-2.5">
-                <img src="/Logo.png" alt="Logo" className="w-28 h-auto mx-auto mb-1 filter grayscale contrast-125" />
-                <h4 className="text-base font-black tracking-wider">ABBA XPRESS</h4>
-                <p className="text-[10px] uppercase">ERP LOGISTICO MULTIMONEDA</p>
-                <p className="text-[11px]">{ticketData.sucursalNombre}</p>
-                <p className="text-[10px]">{ticketData.fecha}</p>
-              </div>
-
-              <div className="space-y-1 border-b border-dashed border-black pb-2.5 text-[11px] pt-1">
-                <p><strong>PROFORMA:</strong> #{ticketData.numeroProforma}</p>
-                <p><strong>CLIENTE:</strong> {ticketData.clienteNombre}</p>
-                <p><strong>TEL:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
-                <p><strong>OPERADOR:</strong> {ticketData.usuarioNombre}</p>
-                <p><strong>METODO:</strong> {ticketData.metodoPago}</p>
-              </div>
-
-              <div className="space-y-1 border-b border-dashed border-black pb-2.5 pt-1">
-                <p className="text-[10px] uppercase font-bold">DETALLE DE PAQUETES ({ticketData.paquetes.length})</p>
-                {ticketData.paquetes.map((p, idx) => (
-                  <div key={idx} className="text-[11px] flex justify-between">
-                    <span className="truncate max-w-[140px]">{p.tracking || 'TRK-GEN'}</span>
-                    <span>${p.subtotal.toFixed(2)} USD</span>
-                  </div>
-                ))}
-              </div>
-
-              {ticketData.cargoDelivery > 0 && (
-                <div className="flex justify-between text-[11px] pt-1">
-                  <span>Cargo Delivery:</span>
-                  <span>${ticketData.cargoDelivery.toFixed(2)} USD</span>
-                </div>
-              )}
-
-              {ticketData.descuento > 0 && (
-                <div className="flex justify-between text-[11px] pt-1">
-                  <span>Descuento:</span>
-                  <span>-${ticketData.descuento.toFixed(2)} USD</span>
-                </div>
-              )}
-
-              <div className="border-t border-dashed border-black pt-2 text-right">
-                <p className="text-[10px]">T/C: C$ {ticketData.tipoCambioAplicado.toFixed(4)}</p>
-                <p className="text-sm font-black">TOTAL: ${ticketData.totalUSD.toFixed(2)} USD</p>
-                <p className="text-xs font-black">TOTAL NIO: C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
-              </div>
-
-              <div className="text-center text-[10px] pt-2 border-t border-dashed border-black">
-                <p>¡Gracias por su preferencia!</p>
-                <p>Comprobante de Recepcion</p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-white border-t border-slate-200 flex gap-2 no-print">
-              <button onClick={() => setTicketData(null)} className="w-1/3 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs cursor-pointer">Cerrar</button>
-              <button onClick={enviarWhatsAppImagen} className="w-1/3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer"><MessageCircle className="w-4 h-4" /> WhatsApp</button>
-              <button onClick={imprimirTicket} className="w-1/3 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 cursor-pointer"><Printer className="w-4 h-4" /> Imprimir</button>
+              <button 
+                onClick={() => window.print()}
+                className="w-1/2 py-2 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-1"
+              >
+                <Printer className="w-4 h-4" /> Imprimir
+              </button>
             </div>
           </div>
         </div>
