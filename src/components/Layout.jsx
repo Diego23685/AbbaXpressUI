@@ -48,8 +48,8 @@ export default function Layout() {
     { nombre: 'Gastos & Utilidades', ruta: '/finanzas', icono: TrendingUp },
     { nombre: 'Exportación USA (FedEx)', ruta: '/exportacion', icono: Globe },
     { nombre: 'Directorio Clientes', ruta: '/clientes', icono: Users },
-    { nombre: 'Rótulos & Manifiestos', ruta: '/rotulos', icono: Tag },
-    { nombre: 'Carga en Tránsito', ruta: '/transito', icono: Truck },
+  
+  
     { nombre: 'Reportes & Utilidades', ruta: '/reportes', icono: BarChart3 },
   ];
 

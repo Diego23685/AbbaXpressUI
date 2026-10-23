@@ -12,13 +12,8 @@ import {
   Plane,
   Ship,
   Box,
-  Truck,
-  Printer,
-  X,
-  Download,
-  Upload
+  Printer
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { clienteService } from '../services/clienteService';
 import { proformaService } from '../services/proformaService';
@@ -61,6 +56,23 @@ export default function RecepcionCarga() {
   const [mensaje, setMensaje] = useState(null);
   const [ticketData, setTicketData] = useState(null);
 
+  // Detección estricta de cliente correspondiente a León
+  const esClienteDeLeon = (cliente) => {
+    if (!cliente) return false;
+    const nombre = (cliente.nombre || '').toUpperCase();
+    const tipo = (cliente.tipoCliente || '').toUpperCase();
+    return tipo === 'SUBAGENCIA' || tipo === 'SUCURSAL_B2B' || nombre.includes('LEON') || nombre.includes('LEÓN');
+  };
+
+  const aplicarReglaDestino = (cliente) => {
+    if (!cliente) return;
+    if (esClienteDeLeon(cliente)) {
+      setSucursalDestinoId(3); // Forzar directamente ID 3 (Sucursal León)
+    } else {
+      setSucursalDestinoId(usuario?.sucursalId || 1);
+    }
+  };
+
   useEffect(() => {
     cargarDatosIniciales();
   }, []);
@@ -74,19 +86,24 @@ export default function RecepcionCarga() {
         api.get('/proveedores').catch(() => ({ data: [] }))
       ]);
 
-      setClientes(clientesData || []);
-      setSucursales(sucursalesRes.data || []);
-      setProveedores(provRes.data || []);
+      const listaClientes = clientesData || [];
+      const listaSucursales = sucursalesRes.data || [];
+      const listaProveedores = provRes.data || [];
 
-      if (clientesData && clientesData.length > 0) {
-        setClienteSeleccionadoId(clientesData[0].id);
-        setClienteActual(clientesData[0]);
-        aplicarReglaDestino(clientesData[0], sucursalesRes.data || []);
+      setClientes(listaClientes);
+      setSucursales(listaSucursales);
+      setProveedores(listaProveedores);
+
+      if (listaClientes.length > 0) {
+        const primerCliente = listaClientes[0];
+        setClienteSeleccionadoId(primerCliente.id);
+        setClienteActual(primerCliente);
+        aplicarReglaDestino(primerCliente);
       }
 
       if (configRes.data) {
         setConfigGlobal(configRes.data);
-        const provDefault = provRes.data?.length > 0 ? provRes.data[0].id : '';
+        const provDefault = listaProveedores.length > 0 ? listaProveedores[0].id : '';
         setPaquetes(prev => prev.map(p => ({
           ...p,
           proveedorId: provDefault,
@@ -98,22 +115,12 @@ export default function RecepcionCarga() {
     }
   };
 
-  const aplicarReglaDestino = (cliente, listaSucursales) => {
-    if (!cliente || !listaSucursales) return;
-    if (cliente.tipoCliente === 'SUBAGENCIA' || cliente.nombre.toLowerCase().includes('león')) {
-      const sucLeon = listaSucursales.find(s => s.id === 3);
-      setSucursalDestinoId(sucLeon ? sucLeon.id : 3);
-    } else {
-      setSucursalDestinoId(usuario?.sucursalId || 1);
-    }
-  };
-
   const handleCambioCliente = (e) => {
     const id = parseInt(e.target.value);
     setClienteSeleccionadoId(id);
     const encontrado = clientes.find((c) => c.id === id);
     setClienteActual(encontrado || null);
-    aplicarReglaDestino(encontrado, sucursales);
+    aplicarReglaDestino(encontrado);
 
     if (encontrado) {
       setPaquetes(prev => prev.map(p => {
@@ -199,9 +206,12 @@ export default function RecepcionCarga() {
     setGuardando(true);
     setMensaje(null);
 
+    // Destino final: Si es de León, forzar siempre 3
+    const destinoFinal = esClienteDeLeon(clienteActual) ? 3 : (parseInt(sucursalDestinoId) || usuario?.sucursalId || 1);
+
     const payload = {
       clienteId: parseInt(clienteSeleccionadoId),
-      sucursalDestinoId: parseInt(sucursalDestinoId) || usuario?.sucursalId || 1,
+      sucursalDestinoId: destinoFinal,
       paquetes: paquetes.map((p) => ({
         tracking: p.tracking || `TRK-${Date.now().toString().slice(-6)}`,
         pesoLbs: parseFloat(p.pesoLbs) || 0,
@@ -233,7 +243,7 @@ export default function RecepcionCarga() {
         }))
       });
 
-      setMensaje({ tipo: 'exito', texto: `Recepción ingresada a crédito con éxito. Proforma: ${numeroGenerado}` });
+      setMensaje({ tipo: 'exito', texto: `Recepción ingresada con éxito. Proforma: ${numeroGenerado} (${destinoFinal === 3 ? 'Enrutada a León' : 'Local Managua'})` });
       setPaquetes([
         {
           id: Date.now(),
@@ -292,7 +302,7 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">1</span>
-              <span>Información del Cliente y Enrutamiento</span>
+              <span>Cliente y Sucursal de Entrega</span>
             </div>
             {acordeonCliente ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -324,7 +334,12 @@ export default function RecepcionCarga() {
                   <select
                     value={sucursalDestinoId}
                     onChange={(e) => setSucursalDestinoId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-bold text-slate-800 focus:outline-none focus:border-brand"
+                    disabled={esClienteDeLeon(clienteActual)}
+                    className={`w-full border rounded-xl py-2.5 pl-9 pr-3 font-bold text-xs focus:outline-none ${
+                      esClienteDeLeon(clienteActual) 
+                        ? 'bg-amber-50 border-amber-300 text-amber-900 cursor-not-allowed' 
+                        : 'bg-white border-slate-300 text-slate-800'
+                    }`}
                   >
                     {sucursales.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -333,12 +348,17 @@ export default function RecepcionCarga() {
                     ))}
                   </select>
                 </div>
+                {esClienteDeLeon(clienteActual) && (
+                  <p className="text-[10px] text-amber-700 font-bold mt-1">
+                    ⚡ Destino forzado a Sucursal León por cuenta mayorista B2B.
+                  </p>
+                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Acordeón 2: Paquetes Dinámicos con Proveedor y UI mejorada */}
+        {/* Acordeón 2: Paquetes Dinámicos con Proveedor */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -347,7 +367,7 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">2</span>
-              <span>Bultos y Asignación de Proveedor ({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
+              <span>Paquetes y proveedor({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
             </div>
             {acordeonPaquetes ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -430,7 +450,6 @@ export default function RecepcionCarga() {
                       </div>
                     </div>
 
-                    {/* Botón Eliminar con Alto Contraste (Rojo Sólido) */}
                     <div className="lg:col-span-1 flex justify-end">
                       <button
                         type="button"
@@ -487,7 +506,7 @@ export default function RecepcionCarga() {
 
       </form>
 
-      {/* Comprobante de Recepción (Sin delivery, detallando peso y tracking) */}
+      {/* Comprobante de Recepción */}
       {ticketData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-mono">
@@ -522,13 +541,13 @@ export default function RecepcionCarga() {
             <div className="flex gap-2 pt-2">
               <button 
                 onClick={() => setTicketData(null)}
-                className="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition"
+                className="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
               >
                 Cerrar
               </button>
               <button 
                 onClick={() => window.print()}
-                className="w-1/2 py-2 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-1"
+                className="w-1/2 py-2 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
               >
                 <Printer className="w-4 h-4" /> Imprimir
               </button>

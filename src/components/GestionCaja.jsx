@@ -1,26 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Landmark, 
-  PlusCircle, 
   Receipt, 
-  CheckCircle2, 
-  AlertCircle, 
-  DollarSign, 
-  Coins, 
   Lock, 
   Unlock,
-  Printer
+  Building2,
+  Package
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
 export default function GestionCaja() {
+  const { usuario } = useAuth();
   const [estadoCaja, setEstadoCaja] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [sucursales, setSucursales] = useState([]);
+  const [sucursalSeleccionadaId, setSucursalSeleccionadaId] = useState(usuario?.sucursalId || 1);
+
   const [modalApertura, setModalApertura] = useState(false);
   const [modalCierre, setModalCierre] = useState(false);
   const [modalVale, setModalVale] = useState(false);
 
-  // Denominaciones Nicaragua
+  // Denominaciones oficiales Nicaragua
   const denominacionesNIO = [1000, 500, 200, 100, 50, 20, 10];
   const denominacionesUSD = [100, 50, 20, 10, 5, 1];
 
@@ -35,16 +36,35 @@ export default function GestionCaja() {
   const [monedaVale, setMonedaVale] = useState('NIO');
 
   useEffect(() => {
-    cargarEstadoCaja();
+    cargarSucursales();
   }, []);
 
-  const cargarEstadoCaja = async () => {
-    setCargando(true);
+  useEffect(() => {
+    if (sucursalSeleccionadaId) {
+      cargarEstadoCaja(sucursalSeleccionadaId);
+    }
+  }, [sucursalSeleccionadaId]);
+
+  const cargarSucursales = async () => {
     try {
-      const res = await api.get('/caja/estado-actual');
-      setEstadoCaja(res.data);
+      const res = await api.get('/sucursales');
+      setSucursales(res.data || []);
+      if (res.data?.length > 0 && !sucursalSeleccionadaId) {
+        setSucursalSeleccionadaId(usuario?.sucursalId || res.data[0].id);
+      }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const cargarEstadoCaja = async (sucId) => {
+    setCargando(true);
+    try {
+      const idFinal = sucId || sucursalSeleccionadaId || usuario?.sucursalId || 1;
+      const res = await api.get(`/caja/estado-actual?sucursalId=${idFinal}`);
+      setEstadoCaja(res.data);
+    } catch (e) {
+      console.error('Error al cargar caja:', e);
     } finally {
       setCargando(false);
     }
@@ -71,11 +91,15 @@ export default function GestionCaja() {
 
     try {
       await api.post('/caja/apertura', {
+        sucursalId: parseInt(sucursalSeleccionadaId),
         bultosFisicosApertura: parseInt(bultosFisicos) || 0,
         denominaciones: denominacionesPayload
       });
       setModalApertura(false);
-      cargarEstadoCaja();
+      setCantidadesNIO({});
+      setCantidadesUSD({});
+      setBultosFisicos(0);
+      await cargarEstadoCaja(sucursalSeleccionadaId);
     } catch (err) {
       alert(err.response?.data?.message || 'Error al aperturar caja');
     }
@@ -94,7 +118,10 @@ export default function GestionCaja() {
         denominaciones: denominacionesPayload
       });
       setModalCierre(false);
-      cargarEstadoCaja();
+      setCantidadesNIO({});
+      setCantidadesUSD({});
+      setBultosFisicos(0);
+      await cargarEstadoCaja(sucursalSeleccionadaId);
     } catch (err) {
       alert(err.response?.data?.message || 'Error al cerrar caja');
     }
@@ -113,14 +140,14 @@ export default function GestionCaja() {
       setConceptoVale('');
       setBeneficiarioVale('');
       setMontoVale('');
-      cargarEstadoCaja();
+      await cargarEstadoCaja(sucursalSeleccionadaId);
     } catch (err) {
       alert('Error al registrar vale');
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
+    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -134,7 +161,23 @@ export default function GestionCaja() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          {/* Selector de Sucursal para Administradores */}
+          {(usuario?.rol === 'SUPER_ADMIN' || sucursales.length > 1) && (
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 px-3 py-1.5 rounded-xl text-xs">
+              <Building2 className="w-4 h-4 text-brand shrink-0" />
+              <select
+                value={sucursalSeleccionadaId}
+                onChange={(e) => setSucursalSeleccionadaId(parseInt(e.target.value))}
+                className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                {sucursales.map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {!estadoCaja?.abierta ? (
             <button
               onClick={() => {
@@ -142,17 +185,17 @@ export default function GestionCaja() {
                 setCantidadesUSD({});
                 setModalApertura(true);
               }}
-              className="px-4 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg"
+              className="px-4 py-2.5 bg-brand hover:bg-brand-600 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg cursor-pointer transition"
             >
               <Unlock className="w-4 h-4" /> Aperturar Caja
             </button>
           ) : (
-            <>
+            <div className="flex gap-2">
               <button
                 onClick={() => setModalVale(true)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition"
               >
-                <Receipt className="w-4 h-4" /> Emitir Vale de Caja
+                <Receipt className="w-4 h-4" /> Emitir Vale
               </button>
               <button
                 onClick={() => {
@@ -160,47 +203,69 @@ export default function GestionCaja() {
                   setCantidadesUSD({});
                   setModalCierre(true);
                 }}
-                className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg cursor-pointer transition"
               >
                 <Lock className="w-4 h-4" /> Realizar Corte / Cierre
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
 
       {/* Tarjetas Estado de Caja */}
-      {estadoCaja?.abierta ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Cajero Responsable</span>
-            <p className="text-lg font-bold text-slate-800">{estadoCaja.cajero}</p>
-            <p className="text-[10px] text-emerald-600 font-bold">🟢 Sesión Abierta</p>
+      {cargando ? (
+        <div className="p-12 text-center text-slate-400 text-xs">Verificando estado de caja...</div>
+      ) : estadoCaja?.abierta ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Cajero Responsable</span>
+              <p className="text-lg font-bold text-slate-800">{estadoCaja.cajero}</p>
+              <p className="text-[10px] text-emerald-600 font-bold">🟢 Sesión Abierta en {estadoCaja.sucursalNombre}</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Saldo en Córdobas</span>
+              <p className="text-2xl font-black font-display text-slate-900">C$ {estadoCaja.saldoActualTeoricoNio?.toFixed(2)}</p>
+              <p className="text-[10px] text-slate-400">Apertura: C$ {estadoCaja.montoAperturaCordobas?.toFixed(2)}</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Saldo en Dólares</span>
+              <p className="text-2xl font-black font-display text-emerald-700">${estadoCaja.saldoActualTeoricoUsd?.toFixed(2)}</p>
+              <p className="text-[10px] text-slate-400">Apertura: ${estadoCaja.montoAperturaDolares?.toFixed(2)}</p>
+            </div>
+
+            <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-xl space-y-1">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Bultos en Bodega</span>
+              <p className="text-2xl font-black font-display text-white">{estadoCaja.bultosFisicosApertura} bultos</p>
+              <p className="text-[10px] text-slate-400">Conteo físico verificado</p>
+            </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Saldo Teórico Córdobas</span>
-            <p className="text-2xl font-black font-display text-slate-900">C$ {estadoCaja.saldoActualTeoricoNio?.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-400">Apertura: C$ {estadoCaja.montoAperturaCordobas?.toFixed(2)}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Saldo Teórico Dólares</span>
-            <p className="text-2xl font-black font-display text-emerald-700">${estadoCaja.saldoActualTeoricoUsd?.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-400">Apertura: ${estadoCaja.montoAperturaDolares?.toFixed(2)}</p>
-          </div>
-
-          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-xl space-y-1">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Bultos en Bodega</span>
-            <p className="text-2xl font-black font-display text-white">{estadoCaja.bultosFisicosApertura} bultos</p>
-            <p className="text-[10px] text-slate-400">Conteo físico verificado</p>
-          </div>
+          {/* Desglose de billetes registrados en la apertura */}
+          {estadoCaja.denominacionesApertura?.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
+              <h3 className="font-bold text-slate-800 text-sm">Billetes ingresados en la apertura:</h3>
+              <div className="flex flex-wrap gap-2">
+                {estadoCaja.denominacionesApertura.map((d, i) => (
+                  <span key={i} className="px-3 py-1 bg-slate-100 rounded-lg font-mono font-bold text-slate-700">
+                    {d.cantidad}x {d.moneda === 'NIO' ? 'C$' : '$'}{d.denominacion}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="p-8 text-center bg-white rounded-3xl border border-dashed border-slate-300 space-y-2">
-          <Lock className="w-8 h-8 text-slate-400 mx-auto" />
-          <h3 className="font-bold text-slate-700">No hay sesión de caja abierta en esta sucursal</h3>
-          <p className="text-xs text-slate-500">Debe realizar el conteo de billetes y bultos en bodega para habilitar la facturación.</p>
+        <div className="p-12 text-center bg-white rounded-3xl border border-dashed border-slate-300 space-y-3">
+          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-slate-800 text-base">Caja Cerrada</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            La sucursal seleccionada no tiene una sesión de caja activa. Presiona "Aperturar Caja" para ingresar el conteo inicial de bultos y billetes.
+          </p>
         </div>
       )}
 
@@ -228,7 +293,7 @@ export default function GestionCaja() {
               {/* Billetes NIO */}
               <div className="space-y-2">
                 <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block">
-                  Desglose de Billetes en Córdobas (Total: C$ {totalArqueoNIO.toFixed(2)})
+                  Desglose en Córdobas (Total: C$ {totalArqueoNIO.toFixed(2)})
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {denominacionesNIO.map(d => (
@@ -250,7 +315,7 @@ export default function GestionCaja() {
               {/* Billetes USD */}
               <div className="space-y-2">
                 <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px] block">
-                  Desglose de Billetes en Dólares (Total: $ {totalArqueoUSD.toFixed(2)})
+                  Desglose en Dólares (Total: $ {totalArqueoUSD.toFixed(2)})
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {denominacionesUSD.map(d => (
@@ -297,7 +362,7 @@ export default function GestionCaja() {
             
             <form onSubmit={handleEmitirVale} className="space-y-3">
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">Nombre del Beneficiario / Quien Recibe:</label>
+                <label className="block font-semibold text-slate-600 mb-1">Nombre del Beneficiario:</label>
                 <input
                   type="text"
                   required
@@ -357,7 +422,7 @@ export default function GestionCaja() {
                   type="submit"
                   className="w-1/2 py-3 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl shadow-lg"
                 >
-                  Imprimir y Guardar Vale
+                  Guardar Vale
                 </button>
               </div>
             </form>

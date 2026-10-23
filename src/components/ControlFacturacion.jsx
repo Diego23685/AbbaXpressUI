@@ -47,6 +47,13 @@ export default function ControlFacturacion() {
   const [comisionPOS, setComisionPOS] = useState(4.5);
   const [monedaCobro, setMonedaCobro] = useState('NIO');
 
+  // Estados Asignación Carga Mayorista en León
+  const [modalAsignarLeon, setModalAsignarLeon] = useState(null);
+  const [clientesLeon, setClientesLeon] = useState([]);
+  const [clienteLeonSeleccionadoId, setClienteLeonSeleccionadoId] = useState('');
+  const [paquetesAsignacion, setPaquetesAsignacion] = useState([]);
+  const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
+
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const REGISTROS_POR_PAGINA = 10;
@@ -109,6 +116,51 @@ export default function ControlFacturacion() {
 
   const toggleExpandir = (id) => {
     setProformaExpandida(proformaExpandida === id ? null : id);
+  };
+
+  // Cargar clientes de León cuando se abre el modal
+  const abrirModalAsignacionLeon = async (p) => {
+    setModalAsignarLeon(p);
+    try {
+      const res = await api.get('/clientes');
+      setClientesLeon(res.data || []);
+      if (res.data?.length > 0) {
+        setClienteLeonSeleccionadoId(res.data[0].id);
+      }
+      setPaquetesAsignacion(p.paquetes.map(pkg => ({
+        id: pkg.id,
+        tracking: pkg.tracking,
+        pesoLbs: pkg.pesoLbs,
+        tarifaAplicada: pkg.tarifaAplicada > 0 ? pkg.tarifaAplicada : 7.50
+      })));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const ejecutarAsignacionLeon = async (e) => {
+    e.preventDefault();
+    if (!clienteLeonSeleccionadoId) {
+      alert('Seleccione un cliente de León.');
+      return;
+    }
+    setGuardandoAsignacion(true);
+    try {
+      await api.put(`/proformas/${modalAsignarLeon.id}/procesar-recepcion-leon`, {
+        clienteId: parseInt(clienteLeonSeleccionadoId),
+        metodoPago: 'CREDITO',
+        cargoDeliveryUSD: 0,
+        descuentoUSD: 0,
+        paquetes: paquetesAsignacion
+      });
+      alert('¡Carga asignada exitosamente al cliente local de León!');
+      setModalAsignarLeon(null);
+      cargarDatos();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error al asignar la carga');
+    } finally {
+      setGuardandoAsignacion(false);
+    }
   };
 
   const dispararWhatsApp = (p) => {
@@ -390,7 +442,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                 </tr>
               ) : (
                 proformasPaginadas.map((p) => {
-                  const esRemisionMayoristaManagua = esLeon && p.sucursalOrigen !== 'Sucursal León';
+                  const esCargaB2BParaLeon = p.sucursalDestinoId === 3 || p.sucursalDestino?.toLowerCase().includes('león');
 
                   return (
                     <React.Fragment key={p.id}>
@@ -440,6 +492,8 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             p.estado === 'FACTURADO'
                               ? 'bg-emerald-100 text-emerald-800'
+                              : p.estado === 'PROCESADO_ASIGNADO'
+                              ? 'bg-blue-100 text-blue-800'
                               : p.estado === 'RECIBIDO_BODEGA_LOCAL'
                               ? 'bg-purple-100 text-purple-800'
                               : p.estado === 'EN_TRANSITO'
@@ -448,6 +502,8 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                           }`}>
                             {p.estado === 'FACTURADO'
                               ? 'Facturado'
+                              : p.estado === 'PROCESADO_ASIGNADO'
+                              ? '✅ Re-facturado a Cliente'
                               : p.estado === 'RECIBIDO_BODEGA_LOCAL'
                               ? (esLeon ? '🏢 Remisión B2B Managua' : '📦 Recibido en Destino')
                               : p.estado === 'EN_TRANSITO'
@@ -474,9 +530,27 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                               <Printer className="w-4 h-4" />
                             </button>
 
-                            {(!esLeon || !esRemisionMayoristaManagua) && (
-                              p.estado === 'PENDIENTE_PAGO' || p.estado === 'EN_TRANSITO' || p.estado === 'RECIBIDO_BODEGA_LOCAL'
-                            ) && (
+                            {/* Caso 1: En León, si es remisión de Managua y AÚN NO ha sido asignada */}
+                            {esLeon && esCargaB2BParaLeon && p.sucursalOrigen !== 'Sucursal León' && p.estado !== 'PROCESADO_ASIGNADO' && (
+                              <button
+                                onClick={() => abrirModalAsignacionLeon(p)}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl font-bold transition flex items-center gap-1 cursor-pointer shadow text-[11px]"
+                                title="Asignar y facturar a un cliente local de León"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                                <span>Asignar a Cliente</span>
+                              </button>
+                            )}
+
+                            {/* Caso 2: Si ya fue re-asignada en León */}
+                            {esLeon && p.estado === 'PROCESADO_ASIGNADO' && (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-1 rounded-lg">
+                                Asignado
+                              </span>
+                            )}
+
+                            {/* Caso 3: Cobro regular a clientes finales (Managua o venta local de León) */}
+                            {p.estado === 'PENDIENTE_PAGO' && (p.sucursalOrigen === 'Sucursal León' || !esLeon) && (
                               <button
                                 onClick={() => setModalLiquidacion(p)}
                                 className="px-3.5 py-1.5 bg-brand hover:bg-brand-600 active:scale-95 text-white rounded-xl font-bold transition flex items-center gap-1 cursor-pointer shadow"
@@ -503,10 +577,10 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                                 </span>
                               </div>
 
-                              {esRemisionMayoristaManagua && (
+                              {esLeon && esCargaB2BParaLeon && p.estado !== 'PROCESADO_ASIGNADO' && (
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
                                   <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600" />
-                                  <span>Esta carga ingresó por mayoreo desde Managua. Los bultos están listos para facturar a su cliente local de León.</span>
+                                  <span>Esta carga ingresó por mayoreo desde Managua. Utilice el botón "Asignar a Cliente" para generar la factura local de León.</span>
                                 </div>
                               )}
 
@@ -679,6 +753,91 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                 Confirmar Cobro
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Asignar Carga de Managua a Cliente Final de León */}
+      {modalAsignarLeon && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs font-sans">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h2 className="text-base font-bold font-display text-slate-900">
+                  Re-facturar Carga a Cliente Final (León)
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Remisión #{modalAsignarLeon.numeroProforma} (Flete Managua Pagado)
+                </p>
+              </div>
+              <button 
+                onClick={() => setModalAsignarLeon(null)} 
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={ejecutarAsignacionLeon} className="space-y-4">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Seleccionar Cliente Consignatario en León:
+                </label>
+                <select
+                  value={clienteLeonSeleccionadoId}
+                  onChange={(e) => setClienteLeonSeleccionadoId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
+                >
+                  {clientesLeon.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre} ({c.telefono}) - Tarifa Aéreo: ${c.tarifaAereo}/lb
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2 border-t border-b py-3">
+                <span className="font-bold text-slate-600 uppercase text-[10px] block">
+                  Bultos a Re-asignar ({paquetesAsignacion.length}):
+                </span>
+                {paquetesAsignacion.map((pkg, idx) => (
+                  <div key={idx} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <span className="font-mono font-bold text-brand">{pkg.tracking}</span>
+                    <span className="text-slate-600">{pkg.pesoLbs} lb</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-500 font-bold">Tarifa $/lb:</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={pkg.tarifaAplicada}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setPaquetesAsignacion(prev => prev.map((item, i) => i === idx ? { ...item, tarifaAplicada: val } : item));
+                        }}
+                        className="w-16 bg-white border border-slate-300 rounded p-1 font-bold text-center"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalAsignarLeon(null)}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoAsignacion}
+                  className="w-1/2 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg"
+                >
+                  {guardandoAsignacion ? 'Generando...' : 'Generar Factura León'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
