@@ -3,12 +3,8 @@ import {
   BarChart3, 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
-  Calendar, 
   Building2, 
   Users, 
-  FileSpreadsheet,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -18,32 +14,40 @@ import api from '../services/api';
 export default function ReportesFinancieros() {
   const { usuario } = useAuth();
   const [reporte, setReporte] = useState(null);
+  const [sucursales, setSucursales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [sucursalFiltro, setSucursalFiltro] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
 
-  // Estados para Paginación de Ventas por Cliente (10 por página)
   const [paginaClientes, setPaginaClientes] = useState(1);
-  
-  // Estados para Paginación de Rendimiento por Sucursal (10 por página)
   const [paginaSucursales, setPaginaSucursales] = useState(1);
-  
   const REGISTROS_POR_PAGINA = 10;
 
   const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN';
-  const esLeon = usuario?.sucursalId === 3;
-  const esManagua = usuario?.sucursalId === 1 || usuario?.sucursalId === 2;
+  const esPropia = usuario?.tipoSucursal === 'PROPIA';
+
+  useEffect(() => {
+    cargarSucursales();
+  }, []);
 
   useEffect(() => {
     cargarReporte();
   }, [sucursalFiltro, fechaInicio, fechaFin]);
 
-  // Reiniciar páginas cuando cambien los filtros
   useEffect(() => {
     setPaginaClientes(1);
     setPaginaSucursales(1);
   }, [sucursalFiltro, fechaInicio, fechaFin]);
+
+  const cargarSucursales = async () => {
+    try {
+      const res = await api.get('/sucursales');
+      setSucursales(res.data || []);
+    } catch (e) {
+      console.error('Error al cargar sucursales:', e);
+    }
+  };
 
   const cargarReporte = async () => {
     setCargando(true);
@@ -73,7 +77,6 @@ export default function ReportesFinancieros() {
     margenPeridaGanancia: 'GANANCIA'
   };
 
-  // Lógica de paginación: Ventas por Cliente
   const listaClientes = reporte?.ventasPorCliente || [];
   const totalPaginasClientes = Math.ceil(listaClientes.length / REGISTROS_POR_PAGINA) || 1;
   const clientesPaginados = useMemo(() => {
@@ -81,7 +84,6 @@ export default function ReportesFinancieros() {
     return listaClientes.slice(inicio, inicio + REGISTROS_POR_PAGINA);
   }, [listaClientes, paginaClientes]);
 
-  // Lógica de paginación: Ventas por Sucursal
   const listaSucursales = reporte?.ventasPorSucursal || [];
   const totalPaginasSucursales = Math.ceil(listaSucursales.length / REGISTROS_POR_PAGINA) || 1;
   const sucursalesPaginadas = useMemo(() => {
@@ -91,8 +93,6 @@ export default function ReportesFinancieros() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
-      
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
@@ -100,29 +100,30 @@ export default function ReportesFinancieros() {
             Reportes de Utilidades, Pérdidas y Ventas
           </h1>
           <p className="text-xs text-slate-500">
-            {esLeon 
-              ? 'Análisis financiero exclusivo para la sucursal de León'
-              : 'Consolidado financiero y análisis de rendimiento por sede (Managua / León)'}
+            {esPropia 
+              ? 'Consolidado financiero y análisis de rendimiento de agencias' 
+              : `Rendimiento financiero exclusivo: ${usuario?.sucursalNombre || 'Sucursal'}`}
           </p>
         </div>
       </div>
 
-      {/* Filtros de Fecha y Sucursal */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-        
-        {/* Selector de Sucursal Dinámico */}
-        {(esSuperAdmin || esManagua) && (
+        {(esSuperAdmin || esPropia) && (
           <div>
             <label className="block text-slate-600 font-semibold mb-1">Filtrar por Sucursal</label>
             <select
               value={sucursalFiltro}
               onChange={(e) => setSucursalFiltro(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium text-slate-800 focus:outline-none focus:border-brand"
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
             >
-              {esSuperAdmin && <option value="">🏢 Todas las Sucursales (Consolidado Global)</option>}
-              {esManagua && <option value="">🏢 Consolidado Managua (Bolonia + Doral)</option>}
-              <option value="1">Bolonia (Managua)</option>
-              <option value="2">Doral (Managua)</option>
+              <option value="">🏢 Consolidado Completo (Sedes Propias)</option>
+              {sucursales
+                .filter(s => esSuperAdmin || s.tipoSucursal === 'PROPIA')
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre} ({s.ciudad}) {s.tipoSucursal === 'FRANQUICIA_B2B' ? '• B2B' : ''}
+                  </option>
+                ))}
             </select>
           </div>
         )}
@@ -152,9 +153,7 @@ export default function ReportesFinancieros() {
         <div className="text-center py-12 text-slate-400 text-xs">Calculando indicadores financieros...</div>
       ) : (
         <>
-          {/* Tarjetas KPI Financieras (Pérdidas y Ganancias) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-            
             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-1">
               <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Ventas Totales</span>
               <p className="text-2xl font-black font-display text-slate-900">${rf.ventasTotalesUSD.toFixed(2)}</p>
@@ -175,23 +174,19 @@ export default function ReportesFinancieros() {
 
             <div className={`p-4 rounded-2xl shadow-sm text-white space-y-1 ${rf.utilidadNetaUSD >= 0 ? 'bg-slate-900' : 'bg-red-900'}`}>
               <div className="flex items-center justify-between text-slate-400">
-                <span className="font-bold uppercase tracking-wider text-[10px]">Utilidad Neta (Neta Final)</span>
+                <span className="font-bold uppercase tracking-wider text-[10px]">Utilidad Neta Real</span>
                 {rf.utilidadNetaUSD >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />}
               </div>
               <p className="text-2xl font-black font-display text-white">${rf.utilidadNetaUSD.toFixed(2)}</p>
               <p className="text-[10px] text-slate-400 font-mono">C$ {rf.utilidadNetaNIO.toFixed(2)} NIO</p>
             </div>
-
           </div>
 
-          {/* Tablas de Rendimiento (Ventas por Cliente y por Sucursal) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
-            
-            {/* Ventas por Cliente */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3 flex flex-col justify-between">
               <div className="space-y-3">
                 <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
-                  <Users className="w-4 h-4 text-brand" /> Ventas por Cliente / Mayorista ({listaClientes.length})
+                  <Users className="w-4 h-4 text-brand" /> Ventas por Cliente ({listaClientes.length})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -204,11 +199,7 @@ export default function ReportesFinancieros() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {clientesPaginados.length === 0 ? (
-                        <tr>
-                          <td colSpan="3" className="text-center py-6 text-slate-400">
-                            Sin registros de clientes para este rango.
-                          </td>
-                        </tr>
+                        <tr><td colSpan="3" className="text-center py-6 text-slate-400">Sin registros de clientes.</td></tr>
                       ) : (
                         clientesPaginados.map((c, idx) => (
                           <tr key={idx} className="hover:bg-slate-50">
@@ -223,12 +214,9 @@ export default function ReportesFinancieros() {
                 </div>
               </div>
 
-              {/* Paginación Ventas por Cliente */}
               {listaClientes.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-slate-500">
-                  <span className="text-[11px]">
-                    Pág. {paginaClientes} de {totalPaginasClientes}
-                  </span>
+                  <span className="text-[11px]">Pág. {paginaClientes} de {totalPaginasClientes}</span>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setPaginaClientes((p) => Math.max(p - 1, 1))}
@@ -249,7 +237,6 @@ export default function ReportesFinancieros() {
               )}
             </div>
 
-            {/* Ventas por Sucursal */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3 flex flex-col justify-between">
               <div className="space-y-3">
                 <h3 className="font-bold font-display text-slate-900 text-sm flex items-center gap-2">
@@ -260,17 +247,13 @@ export default function ReportesFinancieros() {
                     <thead>
                       <tr className="border-b border-slate-200 text-[10px] uppercase font-bold text-slate-400">
                         <th className="py-2">Sucursal</th>
-                        <th className="py-2 text-center">Proformas Facturadas</th>
+                        <th className="py-2 text-center">Proformas</th>
                         <th className="py-2 text-right">Total USD</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {sucursalesPaginadas.length === 0 ? (
-                        <tr>
-                          <td colSpan="3" className="text-center py-6 text-slate-400">
-                            Sin registros de sucursales para este rango.
-                          </td>
-                        </tr>
+                        <tr><td colSpan="3" className="text-center py-6 text-slate-400">Sin registros de sucursales.</td></tr>
                       ) : (
                         sucursalesPaginadas.map((s, idx) => (
                           <tr key={idx} className="hover:bg-slate-50">
@@ -285,12 +268,9 @@ export default function ReportesFinancieros() {
                 </div>
               </div>
 
-              {/* Paginación Rendimiento por Sucursal */}
               {listaSucursales.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-slate-500">
-                  <span className="text-[11px]">
-                    Pág. {paginaSucursales} de {totalPaginasSucursales}
-                  </span>
+                  <span className="text-[11px]">Pág. {paginaSucursales} de {totalPaginasSucursales}</span>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setPaginaSucursales((p) => Math.max(p - 1, 1))}
@@ -310,11 +290,9 @@ export default function ReportesFinancieros() {
                 </div>
               )}
             </div>
-
           </div>
         </>
       )}
-
     </div>
   );
 }

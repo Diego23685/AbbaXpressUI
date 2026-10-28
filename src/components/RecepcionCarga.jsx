@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
+  Search,
+  Library,
+  X,
   PackagePlus, 
   Trash2, 
   ChevronDown, 
@@ -8,16 +11,337 @@ import {
   CheckCircle2, 
   AlertCircle,
   Building,
-  User,
-  Plane,
-  Ship,
-  Box,
   Printer
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clienteService } from '../services/clienteService';
 import { proformaService } from '../services/proformaService';
 import api from '../services/api';
+
+const normalizar = (t) =>
+  (t ?? '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const LIMITE_RESULTADOS = 50;
+const POR_PAGINA = 20;
+const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+
+const coincideBusqueda = (c, terminos) => {
+  if (terminos.length === 0) return true;
+  const telefonoSoloDigitos = (c.telefono ?? '').toString().replace(/\D/g, '');
+  const texto = `${normalizar(c.nombre)} ${normalizar(c.tipoCliente)} ${normalizar(c.telefono)} ${telefonoSoloDigitos}`;
+  return terminos.every((t) => texto.includes(t));
+};
+
+const inicialDe = (c) => {
+  const l = normalizar(c.nombre).trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(l) ? l : '#';
+};
+
+function BibliotecaClientes({ clientes, clienteActual, onSelect, onClose }) {
+  const [busqueda, setBusqueda] = useState('');
+  const [tipo, setTipo] = useState('TODOS');
+  const [letra, setLetra] = useState('');
+  const [pagina, setPagina] = useState(0);
+
+  const ordenados = useMemo(
+    () => [...clientes].sort((a, b) => normalizar(a.nombre).localeCompare(normalizar(b.nombre))),
+    [clientes]
+  );
+  const tipos = useMemo(
+    () => [...new Set(clientes.map((c) => c.tipoCliente).filter(Boolean))].sort(),
+    [clientes]
+  );
+  const letrasDisponibles = useMemo(() => new Set(clientes.map(inicialDe)), [clientes]);
+
+  const filtrados = useMemo(() => {
+    const terminos = normalizar(busqueda).split(/\s+/).filter(Boolean);
+    return ordenados.filter(
+      (c) =>
+        (tipo === 'TODOS' || c.tipoCliente === tipo) &&
+        (!letra || inicialDe(c) === letra) &&
+        coincideBusqueda(c, terminos)
+    );
+  }, [ordenados, busqueda, tipo, letra]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
+  const paginaActual = Math.min(pagina, totalPaginas - 1);
+  const visibles = filtrados.slice(paginaActual * POR_PAGINA, (paginaActual + 1) * POR_PAGINA);
+
+  useEffect(() => {
+    const handler = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const chip = (activo) =>
+    `px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+      activo
+        ? 'bg-brand text-white border-brand'
+        : 'bg-white text-slate-600 border-slate-300 hover:border-brand'
+    }`;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl text-xs">
+        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+          <div className="flex items-center gap-2 font-bold text-sm text-slate-800">
+            <Library className="w-5 h-5 text-brand" />
+            Biblioteca de clientes
+            <span className="text-[11px] font-normal text-slate-500">({clientes.length})</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3 border-b border-slate-100">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Filtrar por nombre, teléfono o tipo..."
+              value={busqueda}
+              onChange={(e) => { setBusqueda(e.target.value); setPagina(0); }}
+              className="w-full bg-white border border-slate-300 rounded-xl py-2 pl-9 pr-3 font-semibold text-slate-800 focus:outline-none focus:border-brand"
+            />
+          </div>
+
+          {tipos.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className={chip(tipo === 'TODOS')} onClick={() => { setTipo('TODOS'); setPagina(0); }}>
+                Todos
+              </button>
+              {tipos.map((t) => (
+                <button key={t} type="button" className={chip(tipo === t)} onClick={() => { setTipo(t); setPagina(0); }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1">
+            <button type="button" className={chip(!letra)} onClick={() => { setLetra(''); setPagina(0); }}>
+              A-Z
+            </button>
+            {LETRAS.map((l) => (
+              <button
+                key={l}
+                type="button"
+                disabled={!letrasDisponibles.has(l)}
+                className={`${chip(letra === l)} disabled:opacity-30 disabled:cursor-not-allowed`}
+                onClick={() => { setLetra(l); setPagina(0); }}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {visibles.length === 0 ? (
+            <p className="p-6 text-center text-slate-500">No hay clientes con esos filtros.</p>
+          ) : (
+            visibles.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                onClick={() => onSelect(c)}
+                className={`w-full text-left px-4 py-2.5 border-b border-slate-100 hover:bg-brand/10 flex items-center justify-between gap-3 cursor-pointer ${
+                  c.id === clienteActual?.id ? 'bg-brand/5' : 'bg-white'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block font-semibold text-slate-800 truncate">{c.nombre}</span>
+                  <span className="block text-[10px] text-slate-500">
+                    {c.tipoCliente}{c.telefono ? ` · Tel: ${c.telefono}` : ''}
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-500 text-right shrink-0">
+                  {c.tarifaAereo != null && <span className="block">Aéreo ${c.tarifaAereo}</span>}
+                  {c.tarifaMaritimo != null && <span className="block">Marítimo ${c.tarifaMaritimo}</span>}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-between p-3 border-t border-slate-100 text-[11px] text-slate-500">
+          <span>{filtrados.length} {filtrados.length === 1 ? 'cliente' : 'clientes'}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={paginaActual === 0}
+              onClick={() => setPagina(paginaActual - 1)}
+              className="px-3 py-1 rounded-lg border border-slate-300 font-bold disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <span>Página {paginaActual + 1} de {totalPaginas}</span>
+            <button
+              type="button"
+              disabled={paginaActual >= totalPaginas - 1}
+              onClick={() => setPagina(paginaActual + 1)}
+              className="px-3 py-1 rounded-lg border border-slate-300 font-bold disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectorCliente({ clientes, clienteActual, onSelect }) {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [indiceActivo, setIndiceActivo] = useState(0);
+  const [bibliotecaAbierta, setBibliotecaAbierta] = useState(false);
+  const contenedorRef = useRef(null);
+  const itemActivoRef = useRef(null);
+
+  const filtrados = useMemo(() => {
+    const terminos = normalizar(busqueda).split(/\s+/).filter(Boolean);
+    if (terminos.length === 0) return clientes;
+    return clientes.filter((c) => coincideBusqueda(c, terminos));
+  }, [clientes, busqueda]);
+
+  const visibles = filtrados.slice(0, LIMITE_RESULTADOS);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (contenedorRef.current && !contenedorRef.current.contains(e.target)) {
+        setAbierto(false);
+        setBusqueda('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (abierto && itemActivoRef.current) {
+      itemActivoRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [indiceActivo, abierto]);
+
+  const abrir = () => {
+    setAbierto(true);
+    const idx = visibles.findIndex((c) => c.id === clienteActual?.id);
+    setIndiceActivo(idx >= 0 ? idx : 0);
+  };
+
+  const elegir = (cliente) => {
+    onSelect(cliente);
+    setAbierto(false);
+    setBusqueda('');
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!abierto) return abrir();
+      setIndiceActivo((i) => Math.min(i + 1, visibles.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setIndiceActivo((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (abierto && visibles[indiceActivo]) elegir(visibles[indiceActivo]);
+    } else if (e.key === 'Escape') {
+      setAbierto(false);
+      setBusqueda('');
+    }
+  };
+
+  return (
+    <div ref={contenedorRef} className="relative">
+      <div className="flex gap-2">
+        <div className="relative flex items-center flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+          <input
+            type="text"
+            role="combobox"
+            aria-expanded={abierto}
+            placeholder="Buscar cliente por nombre o teléfono..."
+            value={abierto ? busqueda : (clienteActual?.nombre || '')}
+            onFocus={abrir}
+            onClick={() => !abierto && abrir()}
+            onChange={(e) => {
+              setBusqueda(e.target.value);
+              setIndiceActivo(0);
+              setAbierto(true);
+            }}
+            onKeyDown={handleKeyDown}
+            className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-9 font-semibold text-slate-800 focus:outline-none focus:border-brand"
+          />
+          <ChevronDown className={`w-4 h-4 text-slate-400 absolute right-3 pointer-events-none transition ${abierto ? 'rotate-180' : ''}`} />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setAbierto(false);
+            setBusqueda('');
+            setBibliotecaAbierta(true);
+          }}
+          className="shrink-0 px-3 rounded-xl border border-slate-300 bg-white hover:border-brand hover:text-brand text-slate-600 font-bold flex items-center gap-1.5 transition cursor-pointer"
+        >
+          <Library className="w-4 h-4" />
+          <span className="hidden sm:inline">Biblioteca</span>
+        </button>
+      </div>
+
+      {bibliotecaAbierta && (
+        <BibliotecaClientes
+          clientes={clientes}
+          clienteActual={clienteActual}
+          onSelect={(c) => {
+            onSelect(c);
+            setBibliotecaAbierta(false);
+          }}
+          onClose={() => setBibliotecaAbierta(false)}
+        />
+      )}
+
+      {abierto && (
+        <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+          {visibles.length === 0 ? (
+            <p className="p-3 text-slate-500">Sin resultados para "{busqueda}"</p>
+          ) : (
+            <>
+              {visibles.map((c, idx) => (
+                <button
+                  type="button"
+                  key={c.id}
+                  ref={idx === indiceActivo ? itemActivoRef : null}
+                  onClick={() => elegir(c)}
+                  onMouseEnter={() => setIndiceActivo(idx)}
+                  className={`w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 cursor-pointer ${
+                    idx === indiceActivo ? 'bg-brand/10' : 'bg-white'
+                  } ${c.id === clienteActual?.id ? 'font-bold' : ''}`}
+                >
+                  <span className="block text-slate-800 font-semibold">{c.nombre}</span>
+                  <span className="block text-[10px] text-slate-500">
+                    {c.tipoCliente}{c.telefono ? ` · Tel: ${c.telefono}` : ''}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RecepcionCarga() {
   const { usuario } = useAuth();
@@ -56,21 +380,27 @@ export default function RecepcionCarga() {
   const [mensaje, setMensaje] = useState(null);
   const [ticketData, setTicketData] = useState(null);
 
-  // Detección estricta de cliente correspondiente a León
-  const esClienteDeLeon = (cliente) => {
-    if (!cliente) return false;
-    const nombre = (cliente.nombre || '').toUpperCase();
-    const tipo = (cliente.tipoCliente || '').toUpperCase();
-    return tipo === 'SUBAGENCIA' || tipo === 'SUCURSAL_B2B' || nombre.includes('LEON') || nombre.includes('LEÓN');
+  // Verificación dinámica de subagencia B2B
+  const esClienteSubagencia = (cliente) => {
+    return cliente?.tipoCliente === 'SUBAGENCIA' || cliente?.tipoCliente === 'SUCURSAL_B2B';
   };
 
-  const aplicarReglaDestino = (cliente) => {
+  const aplicarReglaDestino = (cliente, listaSucursales = sucursales) => {
     if (!cliente) return;
-    if (esClienteDeLeon(cliente)) {
-      setSucursalDestinoId(3); // Forzar directamente ID 3 (Sucursal León)
-    } else {
-      setSucursalDestinoId(usuario?.sucursalId || 1);
+    
+    // Si el cliente es una subagencia B2B, buscar si coincide con el nombre de alguna sucursal B2B
+    if (esClienteSubagencia(cliente)) {
+      const match = listaSucursales.find(s => 
+        s.tipoSucursal === 'FRANQUICIA_B2B' && 
+        (cliente.nombre.toLowerCase().includes(s.nombre.toLowerCase()) || cliente.nombre.toLowerCase().includes(s.ciudad.toLowerCase()))
+      );
+      if (match) {
+        setSucursalDestinoId(match.id);
+        return;
+      }
     }
+
+    setSucursalDestinoId(usuario?.sucursalId || 1);
   };
 
   useEffect(() => {
@@ -98,7 +428,7 @@ export default function RecepcionCarga() {
         const primerCliente = listaClientes[0];
         setClienteSeleccionadoId(primerCliente.id);
         setClienteActual(primerCliente);
-        aplicarReglaDestino(primerCliente);
+        aplicarReglaDestino(primerCliente, listaSucursales);
       }
 
       if (configRes.data) {
@@ -115,10 +445,8 @@ export default function RecepcionCarga() {
     }
   };
 
-  const handleCambioCliente = (e) => {
-    const id = parseInt(e.target.value);
-    setClienteSeleccionadoId(id);
-    const encontrado = clientes.find((c) => c.id === id);
+  const handleCambioCliente = (encontrado) => {
+    setClienteSeleccionadoId(encontrado ? encontrado.id : '');
     setClienteActual(encontrado || null);
     aplicarReglaDestino(encontrado);
 
@@ -206,8 +534,7 @@ export default function RecepcionCarga() {
     setGuardando(true);
     setMensaje(null);
 
-    // Destino final: Si es de León, forzar siempre 3
-    const destinoFinal = esClienteDeLeon(clienteActual) ? 3 : (parseInt(sucursalDestinoId) || usuario?.sucursalId || 1);
+    const destinoFinal = parseInt(sucursalDestinoId) || usuario?.sucursalId || 1;
 
     const payload = {
       clienteId: parseInt(clienteSeleccionadoId),
@@ -225,6 +552,7 @@ export default function RecepcionCarga() {
     try {
       const res = await proformaService.crear(payload);
       const numeroGenerado = res?.numeroProforma || res?.numero || 'ABBA-1001';
+      const sucursalDestinoObj = sucursales.find(s => s.id === destinoFinal);
 
       setTicketData({
         numeroProforma: numeroGenerado,
@@ -243,7 +571,11 @@ export default function RecepcionCarga() {
         }))
       });
 
-      setMensaje({ tipo: 'exito', texto: `Recepción ingresada con éxito. Proforma: ${numeroGenerado} (${destinoFinal === 3 ? 'Enrutada a León' : 'Local Managua'})` });
+      setMensaje({ 
+        tipo: 'exito', 
+        texto: `Recepción ingresada con éxito. Proforma: ${numeroGenerado} (Destino: ${sucursalDestinoObj?.nombre || 'Local'})` 
+      });
+
       setPaquetes([
         {
           id: Date.now(),
@@ -256,7 +588,6 @@ export default function RecepcionCarga() {
         }
       ]);
     } catch (error) {
-      console.error('Error detallado:', error);
       setMensaje({
         tipo: 'error',
         texto: error.response?.data?.message || error.message || 'Error al guardar la carga'
@@ -268,8 +599,6 @@ export default function RecepcionCarga() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
-      
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
@@ -277,7 +606,7 @@ export default function RecepcionCarga() {
             Recepción e Ingreso de Carga en Bodega
           </h1>
           <p className="text-xs text-slate-500">
-            Ingreso oficial de bultos a crédito. El cargo de delivery se aplicará en ventanilla durante la entrega final.
+            Ingreso oficial de bultos a crédito hacia sedes propias o franquicias B2B
           </p>
         </div>
       </div>
@@ -292,8 +621,6 @@ export default function RecepcionCarga() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        
-        {/* Acordeón 1: Cliente y Enrutamiento */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -302,7 +629,7 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">1</span>
-              <span>Cliente y Sucursal de Entrega</span>
+              <span>Cliente y Sucursal de Destino</span>
             </div>
             {acordeonCliente ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -310,21 +637,12 @@ export default function RecepcionCarga() {
           {acordeonCliente && (
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
               <div className="lg:col-span-2">
-                <label className="block text-slate-600 font-semibold mb-1">Cliente Consignatario</label>
-                <div className="relative flex items-center">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3" />
-                  <select
-                    value={clienteSeleccionadoId}
-                    onChange={handleCambioCliente}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 font-semibold text-slate-800 focus:outline-none focus:border-brand"
-                  >
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre} ({c.tipoCliente}) - Tel: {c.telefono}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <label className="block text-slate-600 font-semibold mb-1">Cliente / Cuenta</label>
+                <SelectorCliente
+                  clientes={clientes}
+                  clienteActual={clienteActual}
+                  onSelect={handleCambioCliente}
+                />
               </div>
 
               <div>
@@ -334,31 +652,21 @@ export default function RecepcionCarga() {
                   <select
                     value={sucursalDestinoId}
                     onChange={(e) => setSucursalDestinoId(e.target.value)}
-                    disabled={esClienteDeLeon(clienteActual)}
-                    className={`w-full border rounded-xl py-2.5 pl-9 pr-3 font-bold text-xs focus:outline-none ${
-                      esClienteDeLeon(clienteActual) 
-                        ? 'bg-amber-50 border-amber-300 text-amber-900 cursor-not-allowed' 
-                        : 'bg-white border-slate-300 text-slate-800'
-                    }`}
+                    className="w-full border rounded-xl py-2.5 pl-9 pr-3 font-bold text-xs focus:outline-none bg-white border-slate-300 text-slate-800"
                   >
                     {sucursales.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.nombre} ({s.ciudad})
+                        {s.nombre} ({s.ciudad}) {s.tipoSucursal === 'FRANQUICIA_B2B' ? '• B2B' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
-                {esClienteDeLeon(clienteActual) && (
-                  <p className="text-[10px] text-amber-700 font-bold mt-1">
-                    ⚡ Destino forzado a Sucursal León por cuenta mayorista B2B.
-                  </p>
-                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Acordeón 2: Paquetes Dinámicos con Proveedor */}
+        {/* Acordeón Paquetes */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -367,7 +675,7 @@ export default function RecepcionCarga() {
           >
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">2</span>
-              <span>Paquetes y proveedor({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
+              <span>Paquetes y Proveedores ({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
             </div>
             {acordeonPaquetes ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -393,7 +701,7 @@ export default function RecepcionCarga() {
                     </div>
 
                     <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Proveedor / Courier</label>
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Proveedor</label>
                       <select
                         value={pkg.proveedorId}
                         onChange={(e) => actualizarPaquete(pkg.id, 'proveedorId', e.target.value)}
@@ -456,7 +764,6 @@ export default function RecepcionCarga() {
                         onClick={() => eliminarPaquete(pkg.id)}
                         disabled={paquetes.length === 1}
                         className="p-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg shadow-sm disabled:opacity-30 disabled:bg-slate-300 transition cursor-pointer"
-                        title="Eliminar este paquete"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -477,20 +784,20 @@ export default function RecepcionCarga() {
           )}
         </div>
 
-        {/* Resumen Final de Recepción */}
+        {/* Resumen */}
         <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-center md:text-left">
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Peso Total Carga</p>
-              <p className="text-2xl font-black font-display text-white">{totalLibras.toFixed(2)} <span className="text-sm font-normal text-slate-400">lbs</span></p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Peso Total</p>
+              <p className="text-2xl font-black font-display text-white">{totalLibras.toFixed(2)} lbs</p>
             </div>
             <div className="border-l border-slate-700 pl-6 sm:pl-10">
               <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Flete USD (A Crédito)</p>
-              <p className="text-2xl font-black font-display text-emerald-400">${subtotalPaquetesUSD.toFixed(2)} <span className="text-sm font-normal text-slate-400">USD</span></p>
+              <p className="text-2xl font-black font-display text-emerald-400">${subtotalPaquetesUSD.toFixed(2)} USD</p>
             </div>
             <div className="border-l border-slate-700 pl-6 sm:pl-10">
               <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Equivalente Córdobas</p>
-              <p className="text-2xl font-black font-display text-brand-300">C$ {totalCobradoNIO.toFixed(2)} <span className="text-sm font-normal text-slate-400">NIO</span></p>
+              <p className="text-2xl font-black font-display text-brand-300">C$ {totalCobradoNIO.toFixed(2)} NIO</p>
             </div>
           </div>
 
@@ -503,10 +810,9 @@ export default function RecepcionCarga() {
             <span>{guardando ? 'Ingresando...' : 'Guardar Recepción (A Crédito)'}</span>
           </button>
         </div>
-
       </form>
 
-      {/* Comprobante de Recepción */}
+      {/* Ticket */}
       {ticketData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-mono">
@@ -555,7 +861,6 @@ export default function RecepcionCarga() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

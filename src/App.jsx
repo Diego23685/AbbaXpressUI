@@ -16,6 +16,7 @@ import RecepcionTransferencias from './components/RecepcionTransferencias';
 import ReportesFinancieros from './components/ReportesFinancieros'; 
 import AuditoriaMovimientos from './components/AuditoriaMovimientos';
 import GestionCaja from './components/GestionCaja';
+import GestionSucursales from './components/GestionSucursales';
 
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/reportes" element={<ReportesFinancieros />} />
             <Route path="/auditoria" element={<AuditoriaMovimientos />} />
             <Route path="/caja" element={<GestionCaja />} />
+            <Route path="/sucursales" element={<GestionSucursales />} />
           </Route>
 
           {/* Redirección por defecto para rutas no encontradas */}

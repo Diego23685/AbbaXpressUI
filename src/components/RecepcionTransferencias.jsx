@@ -2,15 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   Truck, 
   CheckCircle2, 
-  Search, 
-  Package, 
   ArrowRight, 
   UserCheck, 
   X, 
   Save, 
   User, 
   CreditCard,
-  Building,
   Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -22,19 +19,17 @@ import ArriboAnimacion from '../components/ArriboAnimacion';
 export default function RecepcionTransferencias() {
   const { usuario } = useAuth();
   const [cargasEnTransito, setCargasEnTransito] = useState([]);
-  const [clientesLeon, setClientesLeon] = useState([]);
+  const [clientesLocales, setClientesLocales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [seleccionados, setSeleccionados] = useState([]);
   const [procesando, setProcesando] = useState(false);
 
-  // Preferencia persistente de animación
   const [habilitarAnimacion, setHabilitarAnimacion] = useState(() => {
     const guardado = localStorage.getItem('abba_animacion_arribo');
     return guardado !== null ? JSON.parse(guardado) : true;
   });
 
-  // Estados de Animación de Arribo
   const [mostrarAnimacionArribo, setMostrarAnimacionArribo] = useState(false);
   const [datosAnimacion, setDatosAnimacion] = useState({
     proformaNumero: '',
@@ -42,17 +37,17 @@ export default function RecepcionTransferencias() {
     cantidadBultos: 1
   });
 
-  // Modal de Verificación y Asignación Directa
   const [modalProcesar, setModalProcesar] = useState(false);
   const [proformaSeleccionada, setProformaSeleccionada] = useState(null);
-  const [clienteLeonId, setClienteLeonId] = useState('');
+  const [clienteLocalId, setClienteLocalId] = useState('');
   const [clienteActual, setClienteActual] = useState(null);
   const [metodoPago, setMetodoPago] = useState('CREDITO');
   const [cargoDelivery, setCargoDelivery] = useState(0);
   const [descuento, setDescuento] = useState(0);
   const [paquetesEditables, setPaquetesEditables] = useState([]);
 
-  const esLeon = usuario?.sucursalId === 3;
+  // Dinámico: cualquier franquicia B2B autónoma receptora
+  const esFranquiciaB2B = usuario?.tipoSucursal === 'FRANQUICIA_B2B' || usuario?.rol === 'ADMIN_SUCURSAL_INDEPENDIENTE';
 
   useEffect(() => {
     cargarDatos();
@@ -68,11 +63,11 @@ export default function RecepcionTransferencias() {
     try {
       const [transitoData, clientesData] = await Promise.all([
         proformaService.obtenerTodas({ estado: 'EN_TRANSITO', busqueda }),
-        esLeon ? clienteService.obtenerTodos() : Promise.resolve([])
+        esFranquiciaB2B ? clienteService.obtenerTodos() : Promise.resolve([])
       ]);
 
       setCargasEnTransito(transitoData || []);
-      setClientesLeon(clientesData || []);
+      setClientesLocales(clientesData || []);
     } catch (e) {
       console.error('Error al cargar datos:', e);
     } finally {
@@ -88,8 +83,8 @@ export default function RecepcionTransferencias() {
 
   const abrirModalAsignacion = (proforma) => {
     setProformaSeleccionada(proforma);
-    const primerCliente = clientesLeon[0] || null;
-    setClienteLeonId(primerCliente ? primerCliente.id : '');
+    const primerCliente = clientesLocales[0] || null;
+    setClienteLocalId(primerCliente ? primerCliente.id : '');
     setClienteActual(primerCliente);
     setMetodoPago('CREDITO');
     setCargoDelivery(proforma.cargoDeliveryUSD || 0);
@@ -117,8 +112,8 @@ export default function RecepcionTransferencias() {
 
   const handleCambioCliente = (e) => {
     const id = parseInt(e.target.value);
-    setClienteLeonId(id);
-    const cliente = clientesLeon.find((c) => c.id === id);
+    setClienteLocalId(id);
+    const cliente = clientesLocales.find((c) => c.id === id);
     setClienteActual(cliente || null);
 
     if (cliente) {
@@ -154,17 +149,17 @@ export default function RecepcionTransferencias() {
       (parseFloat(descuento) || 0)
   );
 
-  const handleGuardarRecepcionLeon = async (e) => {
+  const handleGuardarRecepcion = async (e) => {
     e.preventDefault();
-    if (!clienteLeonId) {
-      alert('Seleccione un cliente consignatario en León.');
+    if (!clienteLocalId) {
+      alert('Seleccione un cliente consignatario local.');
       return;
     }
 
     setProcesando(true);
     try {
       const payload = {
-        clienteId: parseInt(clienteLeonId),
+        clienteId: parseInt(clienteLocalId),
         metodoPago: metodoPago,
         cargoDeliveryUSD: parseFloat(cargoDelivery) || 0,
         descuentoUSD: parseFloat(descuento) || 0,
@@ -175,7 +170,8 @@ export default function RecepcionTransferencias() {
         }))
       };
 
-      await api.put(`/proformas/${proformaSeleccionada.id}/procesar-recepcion-leon`, payload);
+      // Invocación al endpoint genérico de recepción para cualquier subagencia
+      await api.put(`/proformas/${proformaSeleccionada.id}/procesar-recepcion-subagencia`, payload);
       setModalProcesar(false);
 
       if (habilitarAnimacion) {
@@ -200,20 +196,20 @@ export default function RecepcionTransferencias() {
     setProcesando(true);
     try {
       await api.put('/proformas/recibir-lote', seleccionados);
-      const totalSeleccionados = seleccionados.length;
+      const total = seleccionados.length;
       setSeleccionados([]);
 
       if (habilitarAnimacion) {
         setDatosAnimacion({
-          proformaNumero: `${totalSeleccionados} Cargas`,
+          proformaNumero: `${total} Cargas`,
           clienteNombre: 'Ingreso General de Bodega',
-          cantidadBultos: totalSeleccionados
+          cantidadBultos: total
         });
         setMostrarAnimacionArribo(true);
       } else {
         await cargarDatos();
       }
-    } catch (e) {
+    } catch {
       alert('Error al confirmar recepción.');
     } finally {
       setProcesando(false);
@@ -227,32 +223,28 @@ export default function RecepcionTransferencias() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800 animate-in fade-in duration-300">
-      
-      {/* Modal Animación Condicional */}
       {mostrarAnimacionArribo && (
         <ArriboAnimacion
           proformaNumero={datosAnimacion.proformaNumero}
           clienteNombre={datosAnimacion.clienteNombre}
           cantidadBultos={datosAnimacion.cantidadBultos}
-          sucursal="Bodega Central León"
+          sucursal={usuario?.sucursalNombre || 'Bodega Local'}
           onCompletado={handleAnimacionTerminada}
         />
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
             <Truck className="w-6 h-6 text-brand" />
             Monitoreo y Recepción de Transferencias en Tránsito
           </h1>
           <p className="text-xs text-slate-500">
-            Arribo de cargas desde Managua, verificación de paquetes y asignación directa a clientes locales
+            Arribo de remisiones inter-sucursales, verificación de bultos y asignación a clientes locales
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Checkbox / Switch para activar o desactivar animaciones */}
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl cursor-pointer hover:bg-slate-100 transition select-none">
             <input
               type="checkbox"
@@ -264,7 +256,7 @@ export default function RecepcionTransferencias() {
             <span>Efectos Visuales & Sonido</span>
           </label>
 
-          {esLeon && seleccionados.length > 0 && (
+          {esFranquiciaB2B && seleccionados.length > 0 && (
             <button
               disabled={procesando}
               onClick={handleConfirmarLoteSimple}
@@ -277,12 +269,11 @@ export default function RecepcionTransferencias() {
         </div>
       </div>
 
-      {/* Tabla de Cargas en Tránsito */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              {esLeon && <th className="p-3 text-center w-10">Sel.</th>}
+              {esFranquiciaB2B && <th className="p-3 text-center w-10">Sel.</th>}
               <th className="p-3">Proforma</th>
               <th className="p-3">Ruta</th>
               <th className="p-3">Consignatario Origen</th>
@@ -295,11 +286,11 @@ export default function RecepcionTransferencias() {
             {cargando ? (
               <tr><td colSpan={7} className="p-8 text-center text-slate-400">Cargando transferencias en tránsito...</td></tr>
             ) : cargasEnTransito.length === 0 ? (
-              <tr><td colSpan={7} className="p-8 text-center text-slate-400">No hay transferencias en ruta hacia sucursal actualmente.</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-slate-400">No hay transferencias en ruta hacia su sucursal.</td></tr>
             ) : (
               cargasEnTransito.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/80 transition-colors duration-150">
-                  {esLeon && (
+                  {esFranquiciaB2B && (
                     <td className="p-3 text-center">
                       <input
                         type="checkbox"
@@ -312,26 +303,26 @@ export default function RecepcionTransferencias() {
                   <td className="p-3 font-mono font-bold text-brand">{p.numeroProforma}</td>
                   <td className="p-3 font-semibold text-slate-700">
                     <div className="flex items-center gap-1.5">
-                      <span>{p.sucursalOrigen || 'Managua'}</span>
+                      <span>{p.sucursalOrigen}</span>
                       <ArrowRight className="w-3 h-3 text-slate-400" />
-                      <span className="text-brand font-bold">{p.sucursalDestino || 'León'}</span>
+                      <span className="text-brand font-bold">{p.sucursalDestino}</span>
                     </div>
                   </td>
                   <td className="p-3 font-medium text-slate-800">{p.clienteNombre}</td>
                   <td className="p-3 text-center font-bold">{p.paquetes?.length || 0}</td>
                   <td className="p-3 text-center font-display font-bold text-slate-900">{p.totalLbs?.toFixed(2)} lbs</td>
                   <td className="p-3 text-center">
-                    {esLeon ? (
+                    {esFranquiciaB2B ? (
                       <button
                         onClick={() => abrirModalAsignacion(p)}
                         className="px-3 py-1.5 bg-brand hover:bg-brand-600 active:scale-95 text-white rounded-lg font-bold text-[11px] transition-all shadow flex items-center gap-1.5 mx-auto cursor-pointer"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
-                        <span>Verificar & Asignar Cliente</span>
+                        <span>Verificar & Asignar</span>
                       </button>
                     ) : (
                       <span className="bg-amber-100 text-amber-800 font-bold px-2.5 py-0.5 rounded-full text-[10px]">
-                        En Ruta a León
+                        En Ruta a {p.sucursalDestino}
                       </span>
                     )}
                   </td>
@@ -342,39 +333,33 @@ export default function RecepcionTransferencias() {
         </table>
       </div>
 
-      {/* Modal de Verificación y Asignación */}
       {modalProcesar && proformaSeleccionada && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-xs animate-in zoom-in-95 duration-150">
-            
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-bold font-display text-sm flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-brand" /> Recepción y Asignación de Carga #{proformaSeleccionada.numeroProforma}
                 </h3>
-                <p className="text-[10px] text-slate-400">Verifica los bultos y asigna el cobro al cliente final de León</p>
+                <p className="text-[10px] text-slate-400">Verifica los bultos y asigna el cobro al cliente final local</p>
               </div>
-              <button 
-                onClick={() => setModalProcesar(false)}
-                className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition"
-              >
+              <button onClick={() => setModalProcesar(false)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleGuardarRecepcionLeon} className="p-5 space-y-4 overflow-y-auto">
-              
+            <form onSubmit={handleGuardarRecepcion} className="p-5 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block text-slate-600 font-semibold mb-1">Cliente Consignatario (León)</label>
+                  <label className="block text-slate-600 font-semibold mb-1">Cliente Consignatario Local</label>
                   <div className="relative flex items-center">
                     <User className="w-4 h-4 text-slate-400 absolute left-3" />
                     <select
-                      value={clienteLeonId}
+                      value={clienteLocalId}
                       onChange={handleCambioCliente}
                       className="w-full bg-white border border-slate-300 rounded-xl py-2 pl-9 pr-3 font-semibold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
                     >
-                      {clientesLeon.map((c) => (
+                      {clientesLocales.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nombre} ({c.telefono})
                         </option>
@@ -403,7 +388,7 @@ export default function RecepcionTransferencias() {
 
               <div className="space-y-2">
                 <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px]">
-                  Bultos Incluidos en la Transferencia ({paquetesEditables.length})
+                  Bultos en la Transferencia ({paquetesEditables.length})
                 </label>
                 <div className="space-y-2">
                   {paquetesEditables.map((pkg) => (
@@ -455,7 +440,6 @@ export default function RecepcionTransferencias() {
                     value={cargoDelivery}
                     onChange={(e) => setCargoDelivery(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl p-2 font-medium"
-                    placeholder="0.00"
                   />
                 </div>
                 <div>
@@ -466,14 +450,13 @@ export default function RecepcionTransferencias() {
                     value={descuento}
                     onChange={(e) => setDescuento(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl p-2 font-medium"
-                    placeholder="0.00"
                   />
                 </div>
               </div>
 
               <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center">
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase font-semibold">Total a Cobrar (Cliente León)</p>
+                  <p className="text-[10px] text-slate-400 uppercase font-semibold">Total a Cobrar</p>
                   <p className="text-xl font-black font-display text-emerald-400">${totalUSD.toFixed(2)} USD</p>
                 </div>
                 <button
@@ -485,12 +468,10 @@ export default function RecepcionTransferencias() {
                   <span>{procesando ? 'Guardando...' : 'Confirmar y Asignar Carga'}</span>
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

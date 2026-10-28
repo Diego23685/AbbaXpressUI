@@ -201,9 +201,26 @@ export default function Layout() {
                 <ShieldCheck className="w-4 h-4 shrink-0" />
                 <span>Bitácora de Auditoría</span>
               </NavLink>
+
+              <NavLink
+                to="/sucursales"
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
+                    isActive
+                      ? 'bg-brand text-white shadow-md'
+                      : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                  }`
+                }
+              >
+                <Building2 className="w-4 h-4 shrink-0" />
+                <span>Gestión de Agencias</span>
+              </NavLink>
             </>
           )}
         </nav>
+
+        
 
         {/* Botones inferiores */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">

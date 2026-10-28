@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   UserCog, 
   UserPlus, 
-  ShieldCheck, 
   Building, 
   Lock, 
   User, 
@@ -22,12 +21,10 @@ export default function GestionUsuarios() {
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
 
-  // Modales
   const [modalCrear, setModalCrear] = useState(false);
   const [modalEditar, setModalEditar] = useState(false);
   const [usuarioEditandoId, setUsuarioEditandoId] = useState(null);
 
-  // Estados de formulario
   const [nombre, setNombre] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -78,7 +75,7 @@ export default function GestionUsuarios() {
     setUsuarioEditandoId(u.id);
     setNombre(u.nombre);
     setUsername(u.username);
-    setPassword(''); // Se deja vacío para que solo se actualice si escribe algo
+    setPassword('');
     setRol(u.rol);
     setSucursalId(u.sucursalId);
     setModalEditar(true);
@@ -151,13 +148,13 @@ export default function GestionUsuarios() {
       case 'SUPER_ADMIN':
         return <span className="bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Super Admin</span>;
       case 'ADMIN_SUCURSAL':
-        return <span className="bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Admin Managua (Bolonia/Doral)</span>;
+        return <span className="bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Admin Red Propia</span>;
       case 'ADMIN_SUCURSAL_INDEPENDIENTE':
-        return <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Admin Sucursal León (B2B)</span>;
+        return <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Admin Franquicia B2B</span>;
       case 'OPERADOR':
-        return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Operador de Bodega</span>;
+        return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Operador Bodega</span>;
       case 'AUDITOR':
-        return <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Auditor (Solo Lectura)</span>;
+        return <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-full font-bold text-[10px]">Auditor</span>;
       default:
         return <span className="bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full text-[10px] font-medium">{rolName}</span>;
     }
@@ -171,8 +168,6 @@ export default function GestionUsuarios() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
-      
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
@@ -180,7 +175,7 @@ export default function GestionUsuarios() {
             Control de Usuarios y Accesos
           </h1>
           <p className="text-xs text-slate-500">
-            Administración de credenciales, roles operativos y asignación de sucursales
+            Administración de credenciales, roles y asignación de agencias
           </p>
         </div>
         <button
@@ -201,7 +196,6 @@ export default function GestionUsuarios() {
         </div>
       )}
 
-      {/* Buscador */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div className="w-full md:w-80 relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 absolute left-3" />
@@ -215,7 +209,6 @@ export default function GestionUsuarios() {
         </div>
       </div>
 
-      {/* Tabla de Usuarios */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -231,17 +224,9 @@ export default function GestionUsuarios() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {cargando ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-400">
-                    Cargando usuarios...
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Cargando usuarios...</td></tr>
               ) : usuariosFiltrados.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-400">
-                    No se encontraron usuarios.
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">No se encontraron usuarios.</td></tr>
               ) : (
                 usuariosFiltrados.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/70 transition">
@@ -251,12 +236,8 @@ export default function GestionUsuarios() {
                         <span>{u.username}</span>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-800">
-                      {u.nombre}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {getBadgeRol(u.rol)}
-                    </td>
+                    <td className="py-3.5 px-4 font-semibold text-slate-800">{u.nombre}</td>
+                    <td className="py-3.5 px-4">{getBadgeRol(u.rol)}</td>
                     <td className="py-3.5 px-4 text-slate-600 font-medium">
                       <div className="flex items-center gap-1.5">
                         <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -300,135 +281,23 @@ export default function GestionUsuarios() {
         </div>
       </div>
 
-      {/* Modal Crear Usuario */}
-      {modalCrear && (
+      {(modalCrear || modalEditar) && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-brand" />
-                Crear Nuevo Usuario ERP
+                {modalEditar ? `Modificar Usuario: ${username}` : 'Crear Nuevo Usuario ERP'}
               </h2>
               <button 
-                onClick={() => setModalCrear(false)}
+                onClick={() => { setModalCrear(false); setModalEditar(false); }}
                 className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCrearUsuario} className="space-y-3">
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Nombre Completo</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. Roberto Morales"
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-brand font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Nombre de Usuario (Login)</label>
-                <div className="relative flex items-center">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="ej. rmorales"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-slate-800 focus:outline-none focus:border-brand font-mono font-medium"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Contraseña Inicial</label>
-                <div className="relative flex items-center">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3" />
-                  <input
-                    type="password"
-                    required
-                    placeholder="Mínimo 6 caracteres"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-slate-800 focus:outline-none focus:border-brand"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Rol Operativo</label>
-                <select
-                  value={rol}
-                  onChange={(e) => setRol(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand"
-                >
-                  <option value="OPERADOR">Operador de Bodega (Pesaje y Etiquetas)</option>
-                  <option value="ADMIN_SUCURSAL">Administrador Sede Managua (Bolonia / Doral)</option>
-                  <option value="ADMIN_SUCURSAL_INDEPENDIENTE">Administrador Sucursal León (B2B Local)</option>
-                  <option value="AUDITOR">Auditor (Solo Lectura)</option>
-                  <option value="SUPER_ADMIN">Super Administrador (Control Total)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-semibold mb-1">Sucursal Asignada</label>
-                <select
-                  value={sucursalId}
-                  onChange={(e) => setSucursalId(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand"
-                >
-                  {sucursales.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre} ({s.ciudad})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setModalCrear(false)}
-                  className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={guardando}
-                  className="w-1/2 py-3 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition shadow-lg cursor-pointer disabled:opacity-50"
-                >
-                  {guardando ? 'Creando...' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Editar Usuario */}
-      {modalEditar && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
-                <Edit2 className="w-5 h-5 text-brand" />
-                Modificar Usuario: {username}
-              </h2>
-              <button 
-                onClick={() => setModalEditar(false)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleActualizarUsuario} className="space-y-3">
+            <form onSubmit={modalEditar ? handleActualizarUsuario : handleCrearUsuario} className="space-y-3">
               <div>
                 <label className="block text-slate-600 font-semibold mb-1">Nombre Completo</label>
                 <input
@@ -439,16 +308,34 @@ export default function GestionUsuarios() {
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-brand font-medium"
                 />
               </div>
+
+              {!modalEditar && (
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">Nombre de Usuario (Login)</label>
+                  <div className="relative flex items-center">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="ej. rmorales"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-slate-800 focus:outline-none focus:border-brand font-mono font-medium"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-600 font-semibold mb-1">
-                  Nueva Contraseña <span className="text-[10px] font-normal text-slate-400">(Dejar en blanco para mantener la actual)</span>
+                  {modalEditar ? 'Nueva Contraseña (Opcional)' : 'Contraseña Inicial'}
                 </label>
                 <div className="relative flex items-center">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3" />
                   <input
                     type="password"
-                    placeholder="Escribir solo si desea cambiarla"
+                    required={!modalEditar}
+                    placeholder={modalEditar ? 'Dejar en blanco para conservar actual' : 'Mínimo 6 caracteres'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-slate-800 focus:outline-none focus:border-brand"
@@ -461,11 +348,11 @@ export default function GestionUsuarios() {
                 <select
                   value={rol}
                   onChange={(e) => setRol(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand"
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
                 >
-                  <option value="OPERADOR">Operador de Bodega (Pesaje y Etiquetas)</option>
-                  <option value="ADMIN_SUCURSAL">Administrador Sede Managua (Bolonia / Doral)</option>
-                  <option value="ADMIN_SUCURSAL_INDEPENDIENTE">Administrador Sucursal León (B2B Local)</option>
+                  <option value="OPERADOR">Operador de Bodega</option>
+                  <option value="ADMIN_SUCURSAL">Administrador Red Propia</option>
+                  <option value="ADMIN_SUCURSAL_INDEPENDIENTE">Administrador Franquicia B2B</option>
                   <option value="AUDITOR">Auditor (Solo Lectura)</option>
                   <option value="SUPER_ADMIN">Super Administrador (Control Total)</option>
                 </select>
@@ -476,11 +363,11 @@ export default function GestionUsuarios() {
                 <select
                   value={sucursalId}
                   onChange={(e) => setSucursalId(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand"
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
                 >
                   {sucursales.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.nombre} ({s.ciudad})
+                      {s.nombre} ({s.ciudad}) {s.tipoSucursal === 'FRANQUICIA_B2B' ? '• B2B' : ''}
                     </option>
                   ))}
                 </select>
@@ -489,7 +376,7 @@ export default function GestionUsuarios() {
               <div className="flex items-center gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setModalEditar(false)}
+                  onClick={() => { setModalCrear(false); setModalEditar(false); }}
                   className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
                 >
                   Cancelar
@@ -499,14 +386,13 @@ export default function GestionUsuarios() {
                   disabled={guardando}
                   className="w-1/2 py-3 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition shadow-lg cursor-pointer disabled:opacity-50"
                 >
-                  {guardando ? 'Guardando...' : 'Guardar Cambios'}
+                  {guardando ? 'Guardando...' : modalEditar ? 'Guardar Cambios' : 'Crear Usuario'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

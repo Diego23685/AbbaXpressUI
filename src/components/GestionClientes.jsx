@@ -21,28 +21,28 @@ import api from '../services/api';
 export default function GestionClientes() {
   const { usuario } = useAuth();
   const [clientes, setClientes] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [clienteEdicion, setClienteEdicion] = useState(null);
 
-  // Estados Historial 360°
   const [modalHistorial, setModalHistorial] = useState(null);
   const [datos360, setDatos360] = useState(null);
   const [cargando360, setCargando360] = useState(false);
 
-  const esLeon = usuario?.sucursalId === 3;
+  const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN';
+  const esFranquicia = usuario?.tipoSucursal === 'FRANQUICIA_B2B';
 
-  // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const REGISTROS_POR_PAGINA = 10;
 
-  // Formulario
   const [nombre, setNombre] = useState('');
   const [codigoPais, setCodigoPais] = useState('+505');
   const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
+  const [sucursalClienteId, setSucursalClienteId] = useState('');
   const [tarifaAereo, setTarifaAereo] = useState(7.00);
   const [tarifaMaritimo, setTarifaMaritimo] = useState(4.00);
   const [tarifaCelularFija, setTarifaCelularFija] = useState(35.00);
@@ -54,7 +54,17 @@ export default function GestionClientes() {
 
   useEffect(() => {
     cargarClientes();
+    cargarSucursales();
   }, []);
+
+  const cargarSucursales = async () => {
+    try {
+      const res = await api.get('/sucursales');
+      setSucursales(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const cargarClientes = async () => {
     setCargando(true);
@@ -98,6 +108,7 @@ export default function GestionClientes() {
     setCodigoPais('+505');
     setTelefono('');
     setEmail('');
+    setSucursalClienteId(usuario?.sucursalId || (sucursales[0]?.id || 1));
     setTarifaAereo(7.00);
     setTarifaMaritimo(4.00);
     setTarifaCelularFija(35.00);
@@ -114,6 +125,7 @@ export default function GestionClientes() {
     setCodigoPais(c.codigoPais || '+505');
     setTelefono(c.telefono);
     setEmail(c.email || '');
+    setSucursalClienteId(c.sucursalId || usuario?.sucursalId || 1);
     setTarifaAereo(c.tarifaAereo);
     setTarifaMaritimo(c.tarifaMaritimo);
     setTarifaCelularFija(c.tarifaCelularFija ?? 35.00);
@@ -130,7 +142,7 @@ export default function GestionClientes() {
     try {
       const res = await api.get(`/clientes/${c.id}/historial-360`);
       setDatos360(res.data);
-    } catch (e) {
+    } catch {
       alert('Error al consultar historial del cliente');
       setModalHistorial(null);
     } finally {
@@ -146,6 +158,7 @@ export default function GestionClientes() {
       codigoPais,
       telefono,
       email,
+      sucursalId: esSuperAdmin ? parseInt(sucursalClienteId) : (usuario?.sucursalId || 1),
       tarifaAereo: parseFloat(tarifaAereo) || 0,
       tarifaMaritimo: parseFloat(tarifaMaritimo) || 0,
       tarifaCelularFija: parseFloat(tarifaCelularFija) || 0,
@@ -164,7 +177,7 @@ export default function GestionClientes() {
       setModalAbierto(false);
       cargarClientes();
     } catch (error) {
-      alert('Error al guardar cliente');
+      alert(error.response?.data?.message || 'Error al guardar cliente');
     } finally {
       setGuardando(false);
     }
@@ -175,23 +188,21 @@ export default function GestionClientes() {
     try {
       await clienteService.eliminar(id);
       cargarClientes();
-    } catch (error) {
+    } catch {
       alert('Error al eliminar cliente');
     }
   };
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6 font-sans text-slate-800">
-      
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-xl font-bold font-display text-slate-900 flex items-center gap-2">
             <Users className="w-6 h-6 text-brand" />
-            Directorio de Clientes ({esLeon ? 'Sucursal León' : 'Sede Managua'})
+            Directorio de Clientes ({esFranquicia ? usuario?.sucursalNombre : 'Red Propia / Central'})
           </h1>
           <p className="text-xs text-slate-500">
-            Control de tarifas generales, especiales (TV, Celulares) y consulta de historial 360°
+            Control de cartera de clientes, tarifas preferenciales y consulta 360°
           </p>
         </div>
         <button
@@ -203,7 +214,6 @@ export default function GestionClientes() {
         </button>
       </div>
 
-      {/* Barra de Filtros */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
         <form onSubmit={handleBuscar} className="w-full sm:w-80 relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 absolute left-3" />
@@ -225,13 +235,12 @@ export default function GestionClientes() {
           >
             <option value="">Todos los Tipos</option>
             <option value="CLIENTE_GENERAL">Cliente General</option>
-            <option value="CLIENTE_MAYORISTA">Cliente Mayorista</option>
-            {!esLeon && <option value="SUBAGENCIA">Subagencia (León)</option>}
+        
+            {!esFranquicia && <option value="SUBAGENCIA">Subagencias / Franquicias B2B</option>}
           </select>
         </div>
       </div>
 
-      {/* Tabla de Clientes */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -248,17 +257,9 @@ export default function GestionClientes() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {cargando ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-8 text-slate-400">
-                    Cargando directorio de clientes...
-                  </td>
-                </tr>
+                <tr><td colSpan="7" className="text-center py-8 text-slate-400">Cargando directorio de clientes...</td></tr>
               ) : clientesPaginados.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-8 text-slate-400">
-                    No se encontraron clientes registrados.
-                  </td>
-                </tr>
+                <tr><td colSpan="7" className="text-center py-8 text-slate-400">No se encontraron clientes registrados.</td></tr>
               ) : (
                 clientesPaginados.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/70 transition">
@@ -284,7 +285,7 @@ export default function GestionClientes() {
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-blue-50 text-blue-700'
                       }`}>
-                        {c.tipoCliente === 'SUBAGENCIA' ? 'Subagencia' : c.tipoCliente === 'CLIENTE_MAYORISTA' ? 'Mayorista' : 'Cliente General'}
+                        {c.tipoCliente === 'SUBAGENCIA' ? 'Subagencia B2B' : c.tipoCliente === 'CLIENTE_MAYORISTA' ? 'Mayorista' : 'Cliente General'}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-center font-display font-bold text-slate-800">
@@ -301,7 +302,7 @@ export default function GestionClientes() {
                         <button
                           onClick={() => abrirHistorial360(c)}
                           className="p-1.5 text-slate-500 hover:text-brand hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                          title="Historial 360° del Cliente"
+                          title="Historial 360°"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -328,7 +329,6 @@ export default function GestionClientes() {
           </table>
         </div>
 
-        {/* Paginación */}
         {!cargando && clientesFiltrados.length > 0 && (
           <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-slate-500 text-xs">
             <span>
@@ -360,7 +360,6 @@ export default function GestionClientes() {
         )}
       </div>
 
-      {/* Modal Crear/Editar Cliente */}
       {modalAbierto && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs font-sans max-h-[90vh] overflow-y-auto">
@@ -381,6 +380,23 @@ export default function GestionClientes() {
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800 focus:outline-none focus:border-brand font-medium"
                 />
               </div>
+
+              {esSuperAdmin && (
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">Sucursal Asignada</label>
+                  <select
+                    value={sucursalClienteId}
+                    onChange={(e) => setSucursalClienteId(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold cursor-pointer"
+                  >
+                    {sucursales
+                      .filter(s => s.tipoSucursal === 'PROPIA')
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.nombre} ({s.ciudad})</option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
@@ -417,12 +433,11 @@ export default function GestionClientes() {
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold text-slate-800 cursor-pointer"
                 >
                   <option value="CLIENTE_GENERAL">Cliente General</option>
-                  <option value="CLIENTE_MAYORISTA">Cliente Mayorista</option>
-                  {!esLeon && <option value="SUBAGENCIA">Subagencia (León)</option>}
+               
+                  {!esFranquicia && <option value="SUBAGENCIA">Subagencia B2B</option>}
                 </select>
               </div>
 
-              {/* Tarifas Base por Libra */}
               <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                 <div>
                   <label className="block text-slate-600 font-semibold mb-1">Tarifa Aéreo ($/lb)</label>
@@ -446,10 +461,9 @@ export default function GestionClientes() {
                 </div>
               </div>
 
-              {/* Costos Fijos Especiales Acordados */}
               <div className="space-y-2 bg-amber-50/60 p-3 rounded-2xl border border-amber-200">
                 <span className="font-bold text-amber-900 text-[10px] uppercase block">
-                  Tarifas Fijas Especiales por Ítem (Opcional)
+                  Tarifas Fijas Especiales (Opcional)
                 </span>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -492,10 +506,10 @@ export default function GestionClientes() {
               </div>
 
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Dirección de Entrega</label>
+                <label className="block text-slate-600 font-semibold mb-1">Dirección</label>
                 <input
                   type="text"
-                  placeholder="Dirección o punto de referencia"
+                  placeholder="Dirección o punto de entrega"
                   value={direccion}
                   onChange={(e) => setDireccion(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-800"
@@ -523,7 +537,6 @@ export default function GestionClientes() {
         </div>
       )}
 
-      {/* Modal Historial 360° del Cliente */}
       {modalHistorial && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs font-sans max-h-[90vh] overflow-y-auto">
@@ -532,12 +545,7 @@ export default function GestionClientes() {
                 <h2 className="text-base font-bold text-slate-900">Historial 360° de Envíos</h2>
                 <p className="text-[11px] text-brand font-bold">{modalHistorial.nombre} ({modalHistorial.telefono})</p>
               </div>
-              <button 
-                onClick={() => setModalHistorial(null)} 
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold"
-              >
-                ✕
-              </button>
+              <button onClick={() => setModalHistorial(null)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">✕</button>
             </div>
 
             {cargando360 ? (
@@ -564,24 +572,20 @@ export default function GestionClientes() {
                 </div>
 
                 <div className="space-y-1">
-                  <span className="font-bold text-slate-700 text-[10px] uppercase">Últimas Proformas Registradas:</span>
+                  <span className="font-bold text-slate-700 text-[10px] uppercase">Últimas Proformas:</span>
                   <div className="max-h-48 overflow-y-auto space-y-1 divide-y border rounded-xl p-2 bg-slate-50/50">
-                    {datos360.ultimasProformas?.length === 0 ? (
-                      <p className="py-4 text-center text-slate-400">Sin proformas registradas.</p>
-                    ) : (
-                      datos360.ultimasProformas?.map(p => (
-                        <div key={p.id} className="flex justify-between py-1.5 text-[11px] items-center">
-                          <span className="font-mono font-bold text-brand">{p.numeroProforma}</span>
-                          <span>{p.totalLbs?.toFixed(2)} lb</span>
-                          <span className="font-bold">${p.totalCobradoUSD?.toFixed(2)}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                            p.estado === 'FACTURADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {p.estado}
-                          </span>
-                        </div>
-                      ))
-                    )}
+                    {datos360.ultimasProformas?.map(p => (
+                      <div key={p.id} className="flex justify-between py-1.5 text-[11px] items-center">
+                        <span className="font-mono font-bold text-brand">{p.numeroProforma}</span>
+                        <span>{p.totalLbs?.toFixed(2)} lb</span>
+                        <span className="font-bold">${p.totalCobradoUSD?.toFixed(2)}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                          p.estado === 'FACTURADO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {p.estado}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </>
@@ -589,7 +593,6 @@ export default function GestionClientes() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

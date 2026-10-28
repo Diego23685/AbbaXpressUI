@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import api from '../services/api';
 
 const AuthContext = createContext();
@@ -15,6 +15,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/auth/login', { username, password });
       const data = response.data;
+
+      // Si el backend no envía tipoSucursal directamente en el login, lo consultamos
+      if (data.sucursalId && !data.tipoSucursal) {
+        try {
+          const sucRes = await api.get(`/sucursales/${data.sucursalId}`, {
+            headers: { Authorization: `Bearer ${data.token}` }
+          });
+          data.tipoSucursal = sucRes.data?.tipoSucursal || 'PROPIA';
+          data.sucursalNombre = sucRes.data?.nombre || data.sucursalNombre;
+        } catch {
+          data.tipoSucursal = 'PROPIA';
+        }
+      }
 
       localStorage.setItem('abba_token', data.token);
       localStorage.setItem('abba_user', JSON.stringify(data));

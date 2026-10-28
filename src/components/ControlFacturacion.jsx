@@ -13,11 +13,13 @@ import {
   ChevronDown, 
   ChevronUp, 
   PackageCheck, 
-  ShieldAlert, 
   Printer, 
   ChevronLeft, 
   ChevronRight,
-  Check
+  Check,
+  Edit3,
+  X,
+  Save
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
@@ -41,33 +43,31 @@ export default function ControlFacturacion() {
   const [metodoSeleccionado, setMetodoSeleccionado] = useState('EFECTIVO_NIO');
   const [proformaExpandida, setProformaExpandida] = useState(null);
 
-  // Parámetros de cobro en ventanilla
+  // Cobro en ventanilla
   const [cargoDeliveryCobro, setCargoDeliveryCobro] = useState(0);
   const [montoEfectivoRecibido, setMontoEfectivoRecibido] = useState('');
   const [comisionPOS, setComisionPOS] = useState(4.5);
   const [monedaCobro, setMonedaCobro] = useState('NIO');
 
-  // Estados Asignación Carga Mayorista en León
-  const [modalAsignarLeon, setModalAsignarLeon] = useState(null);
-  const [clientesLeon, setClientesLeon] = useState([]);
-  const [clienteLeonSeleccionadoId, setClienteLeonSeleccionadoId] = useState('');
+  // Modal para edición de paquetes
+  const [modalEditarPaquetes, setModalEditarPaquetes] = useState(null);
+  const [paquetesEnEdicion, setPaquetesEnEdicion] = useState([]);
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  // Asignación de remisión recibida
+  const [modalAsignar, setModalAsignar] = useState(null);
+  const [clientesLocales, setClientesLocales] = useState([]);
+  const [clienteLocalId, setClienteLocalId] = useState('');
   const [paquetesAsignacion, setPaquetesAsignacion] = useState([]);
   const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
 
-  // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const REGISTROS_POR_PAGINA = 10;
-
-  // Estado para el ticket / comprobante
   const [ticketData, setTicketData] = useState(null);
 
-  const esLeon = usuario?.sucursalId === 3;
-
-  // Cálculos dinámicos de caja
   const totalBaseUSD = modalLiquidacion ? modalLiquidacion.totalCobradoUSD : 0;
   const totalFinalUSD = totalBaseUSD + (parseFloat(cargoDeliveryCobro) || 0);
   const totalPagarNIO = totalFinalUSD * tipoCambioOficial;
-
   const totalEsperadoMoneda = monedaCobro === 'NIO' ? totalPagarNIO : totalFinalUSD;
   const vueltoCalculado = (parseFloat(montoEfectivoRecibido) || 0) - totalEsperadoMoneda;
 
@@ -97,7 +97,7 @@ export default function ControlFacturacion() {
         setTipoCambioOficial(configRes.data.tipoCambioNIO);
       }
     } catch (error) {
-      console.error('Error al cargar datos de facturación:', error);
+      console.error('Error al cargar facturación:', error);
     } finally {
       setTimeout(() => setCargando(false), 120);
     }
@@ -118,14 +118,40 @@ export default function ControlFacturacion() {
     setProformaExpandida(proformaExpandida === id ? null : id);
   };
 
-  // Cargar clientes de León cuando se abre el modal
-  const abrirModalAsignacionLeon = async (p) => {
-    setModalAsignarLeon(p);
+  const abrirModalEditarPaquetes = (p) => {
+    setModalEditarPaquetes(p);
+    setPaquetesEnEdicion(p.paquetes.map(pkg => ({
+      id: pkg.id,
+      tracking: pkg.tracking,
+      pesoLbs: pkg.pesoLbs,
+      viaEnvio: pkg.viaEnvio || 'AEREO',
+      categoria: pkg.categoria || 'GENERAL',
+      tarifaAplicada: pkg.tarifaAplicada
+    })));
+  };
+
+  const handleGuardarEdicionPaquetes = async (e) => {
+    e.preventDefault();
+    setGuardandoEdicion(true);
+    try {
+      await api.put(`/proformas/${modalEditarPaquetes.id}/editar-paquetes`, paquetesEnEdicion);
+      alert('Paquetes actualizados correctamente.');
+      setModalEditarPaquetes(null);
+      cargarDatos();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error al actualizar paquetes');
+    } finally {
+      setGuardandoEdicion(false);
+    }
+  };
+
+  const abrirModalAsignacion = async (p) => {
+    setModalAsignar(p);
     try {
       const res = await api.get('/clientes');
-      setClientesLeon(res.data || []);
+      setClientesLocales(res.data || []);
       if (res.data?.length > 0) {
-        setClienteLeonSeleccionadoId(res.data[0].id);
+        setClienteLocalId(res.data[0].id);
       }
       setPaquetesAsignacion(p.paquetes.map(pkg => ({
         id: pkg.id,
@@ -138,23 +164,23 @@ export default function ControlFacturacion() {
     }
   };
 
-  const ejecutarAsignacionLeon = async (e) => {
+  const ejecutarAsignacion = async (e) => {
     e.preventDefault();
-    if (!clienteLeonSeleccionadoId) {
-      alert('Seleccione un cliente de León.');
+    if (!clienteLocalId) {
+      alert('Seleccione un cliente local.');
       return;
     }
     setGuardandoAsignacion(true);
     try {
-      await api.put(`/proformas/${modalAsignarLeon.id}/procesar-recepcion-leon`, {
-        clienteId: parseInt(clienteLeonSeleccionadoId),
+      await api.put(`/proformas/${modalAsignar.id}/procesar-recepcion-subagencia`, {
+        clienteId: parseInt(clienteLocalId),
         metodoPago: 'CREDITO',
         cargoDeliveryUSD: 0,
         descuentoUSD: 0,
         paquetes: paquetesAsignacion
       });
-      alert('¡Carga asignada exitosamente al cliente local de León!');
-      setModalAsignarLeon(null);
+      alert('¡Carga asignada exitosamente al cliente local!');
+      setModalAsignar(null);
       cargarDatos();
     } catch (err) {
       alert(err.response?.data?.message || 'Error al asignar la carga');
@@ -165,37 +191,17 @@ export default function ControlFacturacion() {
 
   const dispararWhatsApp = (p) => {
     const telefonoLimpio = (p.clienteTelefono || '').replace(/[^0-9]/g, '');
-    const esCargaLeon = p.sucursalDestino?.toLowerCase().includes('león') || usuario?.sucursalId === 3;
-
-    const direccionSucursal = esCargaLeon 
-      ? `🏢 *LEÓN:* De la estatua de la madre 1c y media al norte.`
-      : `🏢 *MANAGUA – BOLONIA:* Rotonda El Güegüense, 4 cuadras abajo, 1 cuadra al norte y media cuadra arriba. Plaza Kamelu, módulo número 2.\n🏢 *CIUDAD EL DORAL:* Avenida 15, calle 4, módulo P-14.`;
-
     const mensaje = 
 `📦 *¡Tu paquete ya está listo para entrega!*
 ¡Hola, *${p.clienteNombre}*! 👋🏼
-Nos complace informarte que tu envío ya se encuentra disponible para retiro en ABBA Xpress. 📦✈️🚢
+Tu envío ya se encuentra disponible para retiro en ABBA Xpress. 📦✈️🚢
 
 💳 *MÉTODOS DE PAGO*
-Puedes realizar tu pago en efectivo o mediante transferencia bancaria a nuestras cuentas:
-🏦 BAC: 367477320
-🏦 LAFISE: 131238556
-👤 Titular de ambas cuentas: Junior Evaristo Ramírez
-⚠️ Si realizas una transferencia, presenta tu comprobante de pago al momento de retirar tu paquete.
+Efectivo o transferencia bancaria:
+🏦 BAC: 367477320 | LAFISE: 131238556
+👤 Titular: Junior Evaristo Ramírez
 
-📍 *NUESTRAS SUCURSALES*
-${direccionSucursal}
-
-🚚 *SERVICIO DE DELIVERY*
-También contamos con servicio de entrega a domicilio en Managua y envíos hacia los departamentos, con costo adicional.
-
-📌 *NOTAS IMPORTANTES*
-* Si tu proveedor dividió tu pedido en varios paquetes, cada uno se registrará según su número de guía y peso correspondiente.
-* Te recomendamos retirar tus paquetes oportunamente para evitar inconvenientes con su almacenamiento.
-Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación para retirar su paquete sin cargos por almacenamiento. A partir del sexto día hábil, se aplicará un cargo de US$0.50 por día por cada paquete que permanezca sin retirar.
-
-💙 *¡Gracias por confiar en ABBA Xpress!*
-✈️🚢 Tu carga, en buenas manos. Rápido, seguro y sin estrés.`;
+💙 *¡Gracias por confiar en ABBA Xpress!*`;
 
     window.open(`https://api.whatsapp.com/send?phone=${telefonoLimpio}&text=${encodeURIComponent(mensaje)}`, '_blank');
   };
@@ -277,11 +283,9 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
       link.click();
 
       const telefonoLimpio = (ticketData.clienteTelefono || '').replace(/[^0-9]/g, '');
-      const texto = encodeURIComponent(`Hola *${ticketData.clienteNombre}*, adjunto el comprobante oficial de su carga #${ticketData.numeroProforma} por un valor de $${ticketData.totalUSD.toFixed(2)} USD (C$ ${ticketData.totalNIO.toFixed(2)} NIO). ¡Gracias por su preferencia!`);
-      
+      const texto = encodeURIComponent(`Hola *${ticketData.clienteNombre}*, adjunto su comprobante #${ticketData.numeroProforma} por $${ticketData.totalUSD.toFixed(2)} USD (C$ ${ticketData.totalNIO.toFixed(2)} NIO).`);
       window.open(`https://api.whatsapp.com/send?phone=${telefonoLimpio}&text=${texto}`, '_blank');
-    } catch (err) {
-      console.error('Error al generar la imagen para WhatsApp:', err);
+    } catch {
       alert('No se pudo generar la imagen del comprobante.');
     }
   };
@@ -300,9 +304,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
               Cuentas por Cobrar y Facturación
             </h1>
             <p className="text-xs text-slate-500">
-              {esLeon 
-                ? 'Control de inventario recibido desde Managua y facturación local a clientes de León'
-                : 'Control de saldos a crédito, cobros en mostrador y notificaciones por WhatsApp'}
+              Control de saldos a crédito, cobros en mostrador y facturación de transferencias
             </p>
           </div>
         </div>
@@ -357,7 +359,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
         </div>
       </div>
 
-      {/* Barra de Filtros y Búsqueda */}
+      {/* Barra de Filtros */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
         <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
           <button
@@ -367,14 +369,6 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
             }`}
           >
             📦 Pendientes & En Bodega
-          </button>
-          <button
-            onClick={() => setFiltroEstado('EN_TRANSITO')}
-            className={`px-3.5 py-1.5 rounded-lg font-bold transition-all text-xs ${
-              filtroEstado === 'EN_TRANSITO' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            🚚 En Ruta
           </button>
           <button
             onClick={() => setFiltroEstado('FACTURADO')}
@@ -442,7 +436,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                 </tr>
               ) : (
                 proformasPaginadas.map((p) => {
-                  const esCargaB2BParaLeon = p.sucursalDestinoId === 3 || p.sucursalDestino?.toLowerCase().includes('león');
+                  const esCargaTrasladada = p.sucursalDestinoId === usuario?.sucursalId && p.sucursalOrigenId !== usuario?.sucursalId;
 
                   return (
                     <React.Fragment key={p.id}>
@@ -464,7 +458,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
 
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                            {p.clienteNombre.includes('León') ? (
+                            {esCargaTrasladada ? (
                               <Building2 className="w-3.5 h-3.5 text-brand shrink-0" />
                             ) : (
                               <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -505,7 +499,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                               : p.estado === 'PROCESADO_ASIGNADO'
                               ? '✅ Re-facturado a Cliente'
                               : p.estado === 'RECIBIDO_BODEGA_LOCAL'
-                              ? (esLeon ? '🏢 Remisión B2B Managua' : '📦 Recibido en Destino')
+                              ? '🏢 Remisión B2B Recibida'
                               : p.estado === 'EN_TRANSITO'
                               ? '🚚 En Ruta'
                               : 'Pendiente'}
@@ -517,7 +511,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                             <button
                               onClick={() => dispararWhatsApp(p)}
                               className="p-2 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 rounded-xl transition cursor-pointer"
-                              title="Enviar Notificación por WhatsApp"
+                              title="Enviar WhatsApp"
                             >
                               <MessageCircle className="w-4 h-4" />
                             </button>
@@ -525,32 +519,23 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                             <button
                               onClick={() => abrirTicketExistente(p)}
                               className="p-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 rounded-xl transition cursor-pointer"
-                              title="Ver y Re-imprimir Comprobante"
+                              title="Comprobante"
                             >
                               <Printer className="w-4 h-4" />
                             </button>
 
-                            {/* Caso 1: En León, si es remisión de Managua y AÚN NO ha sido asignada */}
-                            {esLeon && esCargaB2BParaLeon && p.sucursalOrigen !== 'Sucursal León' && p.estado !== 'PROCESADO_ASIGNADO' && (
+                            {esCargaTrasladada && p.estado !== 'PROCESADO_ASIGNADO' && (
                               <button
-                                onClick={() => abrirModalAsignacionLeon(p)}
+                                onClick={() => abrirModalAsignacion(p)}
                                 className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl font-bold transition flex items-center gap-1 cursor-pointer shadow text-[11px]"
-                                title="Asignar y facturar a un cliente local de León"
+                                title="Asignar y facturar a cliente final de esta sede"
                               >
                                 <UserCheck className="w-3.5 h-3.5" />
-                                <span>Asignar a Cliente</span>
+                                <span>Asignar</span>
                               </button>
                             )}
 
-                            {/* Caso 2: Si ya fue re-asignada en León */}
-                            {esLeon && p.estado === 'PROCESADO_ASIGNADO' && (
-                              <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-1 rounded-lg">
-                                Asignado
-                              </span>
-                            )}
-
-                            {/* Caso 3: Cobro regular a clientes finales (Managua o venta local de León) */}
-                            {p.estado === 'PENDIENTE_PAGO' && (p.sucursalOrigen === 'Sucursal León' || !esLeon) && (
+                            {p.estado === 'PENDIENTE_PAGO' && !esCargaTrasladada && (
                               <button
                                 onClick={() => setModalLiquidacion(p)}
                                 className="px-3.5 py-1.5 bg-brand hover:bg-brand-600 active:scale-95 text-white rounded-xl font-bold transition flex items-center gap-1 cursor-pointer shadow"
@@ -563,8 +548,9 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                         </td>
                       </tr>
 
+                      {/* Desglose Expandido con Botón de Edición */}
                       {proformaExpandida === p.id && (
-                        <tr className="bg-slate-50/90 border-b border-slate-200 animate-in fade-in duration-150">
+                        <tr className="bg-slate-50/90 border-b border-slate-200">
                           <td colSpan="7" className="p-4">
                             <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                               <div className="flex items-center justify-between text-slate-600 font-bold border-b border-slate-100 pb-2">
@@ -572,17 +558,24 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                                   <PackageCheck className="w-4 h-4 text-brand" />
                                   Desglose de Paquetes en #{p.numeroProforma}
                                 </span>
-                                <span className="font-mono text-[11px] text-slate-400">
-                                  T/C Aplicado: C$ {p.tipoCambioAplicado?.toFixed(4)}
-                                </span>
-                              </div>
+                                
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono text-[11px] text-slate-400">
+                                    T/C: C$ {p.tipoCambioAplicado?.toFixed(4)}
+                                  </span>
 
-                              {esLeon && esCargaB2BParaLeon && p.estado !== 'PROCESADO_ASIGNADO' && (
-                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
-                                  <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600" />
-                                  <span>Esta carga ingresó por mayoreo desde Managua. Utilice el botón "Asignar a Cliente" para generar la factura local de León.</span>
+                                  {/* Solo permitir editar si la proforma no ha sido cobrada/facturada */}
+                                  {p.estado !== 'FACTURADO' && (
+                                    <button
+                                      onClick={() => abrirModalEditarPaquetes(p)}
+                                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                      <span>Editar Pesos / Tarifas</span>
+                                    </button>
+                                  )}
                                 </div>
-                              )}
+                              </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
                                 {p.paquetes.map((pkg, idx) => (
@@ -594,7 +587,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                                       </span>
                                     </div>
                                     <div className="flex justify-between items-center pt-1 border-t border-slate-200/60 font-medium">
-                                      <span className="text-slate-600">{pkg.pesoLbs.toFixed(2)} lb</span>
+                                      <span className="text-slate-600">{pkg.pesoLbs.toFixed(2)} lb (${pkg.tarifaAplicada}/lb)</span>
                                       <span className="font-bold font-display text-slate-900">${pkg.subtotalUSD.toFixed(2)} USD</span>
                                     </div>
                                   </div>
@@ -644,9 +637,126 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
         )}
       </div>
 
-      {/* Modal de Liquidación */}
+      {/* Modal Editar Paquetes */}
+      {modalEditarPaquetes && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 text-xs font-sans max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+                  <Edit3 className="w-5 h-5 text-brand" />
+                  Corregir Paquetes de #{modalEditarPaquetes.numeroProforma}
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Cliente: <strong className="text-slate-800">{modalEditarPaquetes.clienteNombre}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setModalEditarPaquetes(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleGuardarEdicionPaquetes} className="space-y-4">
+              <div className="space-y-3">
+                {paquetesEnEdicion.map((pkg, idx) => {
+                  const subtotalItem = (pkg.categoria === 'CELULAR' || pkg.categoria === 'PALLET')
+                    ? pkg.tarifaAplicada
+                    : pkg.pesoLbs * pkg.tarifaAplicada;
+
+                  return (
+                    <div key={pkg.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                      <div className="sm:col-span-4">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Tracking</label>
+                        <input
+                          type="text"
+                          required
+                          value={pkg.tracking}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPaquetesEnEdicion(prev => prev.map((p, i) => i === idx ? { ...p, tracking: val } : p));
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Peso (lbs)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          min="0.1"
+                          value={pkg.pesoLbs}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setPaquetesEnEdicion(prev => prev.map((p, i) => i === idx ? { ...p, pesoLbs: val } : p));
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-slate-900 text-center"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Tarifa ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          min="0"
+                          value={pkg.tarifaAplicada}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setPaquetesEnEdicion(prev => prev.map((p, i) => i === idx ? { ...p, tarifaAplicada: val } : p));
+                          }}
+                          className="w-full bg-amber-50 border border-amber-300 rounded-lg p-2 font-bold text-amber-900 text-center"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2 text-right">
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase">Subtotal</span>
+                        <span className="font-bold font-display text-slate-900 text-sm">
+                          ${subtotalItem.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center font-display">
+                <span className="text-xs uppercase text-slate-400 font-bold">Nuevo Total Estimado:</span>
+                <span className="text-lg font-black text-emerald-400">
+                  ${paquetesEnEdicion.reduce((acc, p) => acc + ((p.categoria === 'CELULAR' || p.categoria === 'PALLET') ? p.tarifaAplicada : p.pesoLbs * p.tarifaAplicada), 0).toFixed(2)} USD
+                </span>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalEditarPaquetes(null)}
+                  className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoEdicion}
+                  className="w-1/2 py-3 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{guardandoEdicion ? 'Guardando...' : 'Confirmar Cambios'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cobro y Liquidación */}
       {modalLiquidacion && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs font-sans">
             <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-600" />
@@ -659,7 +769,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
             </div>
 
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Cargo de Delivery Final ($ USD):</label>
+              <label className="block text-slate-600 font-semibold mb-1">Cargo Delivery Final ($ USD):</label>
               <input
                 type="number"
                 step="0.5"
@@ -667,7 +777,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                 value={cargoDeliveryCobro}
                 onChange={(e) => setCargoDeliveryCobro(e.target.value)}
                 placeholder="0.00 (0 si retira en sucursal)"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none focus:border-brand"
+                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none"
               />
             </div>
 
@@ -683,7 +793,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
               <select
                 value={metodoSeleccionado}
                 onChange={(e) => setMetodoSeleccionado(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
+                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none cursor-pointer"
               >
                 <option value="EFECTIVO_NIO">🇳🇮 Efectivo Córdobas (C$ NIO)</option>
                 <option value="EFECTIVO_USD">💵 Efectivo Dólares ($ USD)</option>
@@ -757,38 +867,38 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
         </div>
       )}
 
-      {/* Modal Asignar Carga de Managua a Cliente Final de León */}
-      {modalAsignarLeon && (
+      {/* Modal Asignar Remisión a Cliente Local */}
+      {modalAsignar && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs font-sans">
             <div className="flex justify-between items-center border-b pb-3">
               <div>
                 <h2 className="text-base font-bold font-display text-slate-900">
-                  Re-facturar Carga a Cliente Final (León)
+                  Re-facturar Carga a Cliente Final
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  Remisión #{modalAsignarLeon.numeroProforma} (Flete Managua Pagado)
+                  Remisión #{modalAsignar.numeroProforma} (Transferida desde {modalAsignar.sucursalOrigen})
                 </p>
               </div>
               <button 
-                onClick={() => setModalAsignarLeon(null)} 
+                onClick={() => setModalAsignar(null)} 
                 className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={ejecutarAsignacionLeon} className="space-y-4">
+            <form onSubmit={ejecutarAsignacion} className="space-y-4">
               <div>
                 <label className="block text-slate-700 font-bold mb-1">
-                  Seleccionar Cliente Consignatario en León:
+                  Seleccionar Cliente Local Consignatario:
                 </label>
                 <select
-                  value={clienteLeonSeleccionadoId}
-                  onChange={(e) => setClienteLeonSeleccionadoId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none focus:border-brand cursor-pointer"
+                  value={clienteLocalId}
+                  onChange={(e) => setClienteLocalId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800 focus:outline-none cursor-pointer"
                 >
-                  {clientesLeon.map((c) => (
+                  {clientesLocales.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nombre} ({c.telefono}) - Tarifa Aéreo: ${c.tarifaAereo}/lb
                     </option>
@@ -824,7 +934,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setModalAsignarLeon(null)}
+                  onClick={() => setModalAsignar(null)}
                   className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
                 >
                   Cancelar
@@ -834,7 +944,7 @@ Nota: El cliente dispondrá de 5 días hábiles a partir de esta notificación p
                   disabled={guardandoAsignacion}
                   className="w-1/2 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg"
                 >
-                  {guardandoAsignacion ? 'Generando...' : 'Generar Factura León'}
+                  {guardandoAsignacion ? 'Generando...' : 'Generar Factura Local'}
                 </button>
               </div>
             </form>
