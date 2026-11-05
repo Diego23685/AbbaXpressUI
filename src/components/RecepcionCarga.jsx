@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   Building,
-  Printer
+  Printer,
+  Boxes
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clienteService } from '../services/clienteService';
@@ -167,6 +168,7 @@ function BibliotecaClientes({ clientes, clienteActual, onSelect, onClose }) {
                 <span className="text-[10px] text-slate-500 text-right shrink-0">
                   {c.tarifaAereo != null && <span className="block">Aéreo ${c.tarifaAereo}</span>}
                   {c.tarifaMaritimo != null && <span className="block">Marítimo ${c.tarifaMaritimo}</span>}
+                  {c.costoPorPieCubico != null && <span className="block font-semibold text-brand">ft³ ${c.costoPorPieCubico}</span>}
                 </span>
               </button>
             ))
@@ -235,6 +237,7 @@ function SelectorCliente({ clientes, clienteActual, onSelect }) {
 
   const abrir = () => {
     setAbierto(true);
+    setBusqueda('');
     const idx = visibles.findIndex((c) => c.id === clienteActual?.id);
     setIndiceActivo(idx >= 0 ? idx : 0);
   };
@@ -263,7 +266,7 @@ function SelectorCliente({ clientes, clienteActual, onSelect }) {
   };
 
   return (
-    <div ref={contenedorRef} className="relative">
+    <div ref={contenedorRef} className="relative w-full">
       <div className="flex gap-2">
         <div className="relative flex items-center flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
@@ -313,29 +316,27 @@ function SelectorCliente({ clientes, clienteActual, onSelect }) {
       )}
 
       {abierto && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
           {visibles.length === 0 ? (
             <p className="p-3 text-slate-500">Sin resultados para "{busqueda}"</p>
           ) : (
-            <>
-              {visibles.map((c, idx) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  ref={idx === indiceActivo ? itemActivoRef : null}
-                  onClick={() => elegir(c)}
-                  onMouseEnter={() => setIndiceActivo(idx)}
-                  className={`w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 cursor-pointer ${
-                    idx === indiceActivo ? 'bg-brand/10' : 'bg-white'
-                  } ${c.id === clienteActual?.id ? 'font-bold' : ''}`}
-                >
-                  <span className="block text-slate-800 font-semibold">{c.nombre}</span>
-                  <span className="block text-[10px] text-slate-500">
-                    {c.tipoCliente}{c.telefono ? ` · Tel: ${c.telefono}` : ''}
-                  </span>
-                </button>
-              ))}
-            </>
+            visibles.map((c, idx) => (
+              <button
+                type="button"
+                key={c.id}
+                ref={idx === indiceActivo ? itemActivoRef : null}
+                onClick={() => elegir(c)}
+                onMouseEnter={() => setIndiceActivo(idx)}
+                className={`w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 cursor-pointer ${
+                  idx === indiceActivo ? 'bg-brand/10' : 'bg-white'
+                } ${c.id === clienteActual?.id ? 'font-bold' : ''}`}
+              >
+                <span className="block text-slate-800 font-semibold">{c.nombre}</span>
+                <span className="block text-[10px] text-slate-500">
+                  {c.tipoCliente}{c.telefono ? ` · Tel: ${c.telefono}` : ''}
+                </span>
+              </button>
+            ))
           )}
         </div>
       )}
@@ -356,9 +357,10 @@ export default function RecepcionCarga() {
     tipoCambioNIO: 36.6243,
     tarifaAereoGeneral: 7.00,
     tarifaMaritimoGeneral: 4.00,
-    tarifaCelularFija: 35.00,
+    tarifaCelularFija: 0.00,
     tarifaTvMaritimo: 3.50,
     tarifaTvAereo: 7.50,
+    tarifaPieCubicoGeneral: 22.00
   });
 
   const [acordeonCliente, setAcordeonCliente] = useState(true);
@@ -368,7 +370,12 @@ export default function RecepcionCarga() {
     {
       id: Date.now(),
       tracking: '',
+      descripcion: '',
       pesoLbs: 1,
+      altoIn: '',
+      anchoIn: '',
+      largoIn: '',
+      piesCubicos: '',
       viaEnvio: 'AEREO',
       categoria: 'GENERAL',
       proveedorId: '',
@@ -380,7 +387,11 @@ export default function RecepcionCarga() {
   const [mensaje, setMensaje] = useState(null);
   const [ticketData, setTicketData] = useState(null);
 
-  // Verificación dinámica de subagencia B2B
+  // Verificación de categoría exclusiva (Pies Cúbicos no puede mezclarse)
+  const esModoPiesCubicos = useMemo(() => {
+    return paquetes.some((p) => p.categoria === 'PIES_CUBICOS');
+  }, [paquetes]);
+
   const esClienteSubagencia = (cliente) => {
     return cliente?.tipoCliente === 'SUBAGENCIA' || cliente?.tipoCliente === 'SUCURSAL_B2B';
   };
@@ -388,7 +399,6 @@ export default function RecepcionCarga() {
   const aplicarReglaDestino = (cliente, listaSucursales = sucursales) => {
     if (!cliente) return;
     
-    // Si el cliente es una subagencia B2B, buscar si coincide con el nombre de alguna sucursal B2B
     if (esClienteSubagencia(cliente)) {
       const match = listaSucursales.find(s => 
         s.tipoSucursal === 'FRANQUICIA_B2B' && 
@@ -445,46 +455,61 @@ export default function RecepcionCarga() {
     }
   };
 
+  const obtenerTarifaBaseCliente = (pkg, cliente, config) => {
+    if (pkg.categoria === 'PIES_CUBICOS') {
+      return cliente?.costoPorPieCubico ?? (config.tarifaPieCubicoGeneral || 22.00);
+    }
+
+    if (!cliente) {
+      if (pkg.viaEnvio === 'MARITIMO') return config.tarifaMaritimoGeneral || 4.00;
+      return config.tarifaAereoGeneral || 7.00;
+    }
+
+    if (pkg.categoria === 'CELULAR') {
+      return cliente.tarifaCelularFija ?? 0.00;
+    } else if (pkg.categoria === 'SMART_TV') {
+      return pkg.viaEnvio === 'MARITIMO'
+        ? (cliente.tarifaTvMaritimo || config.tarifaTvMaritimo || 3.50)
+        : (cliente.tarifaTvAereo || config.tarifaTvAereo || 7.50);
+    }
+
+    return pkg.viaEnvio === 'MARITIMO' ? cliente.tarifaMaritimo : cliente.tarifaAereo;
+  };
+
   const handleCambioCliente = (encontrado) => {
     setClienteSeleccionadoId(encontrado ? encontrado.id : '');
     setClienteActual(encontrado || null);
     aplicarReglaDestino(encontrado);
 
     if (encontrado) {
-      setPaquetes(prev => prev.map(p => {
-        let nuevaTarifa = p.tarifaUnitario;
-        if (p.categoria === 'GENERAL' || p.categoria === 'PALLET') {
-          nuevaTarifa = p.viaEnvio === 'MARITIMO' ? encontrado.tarifaMaritimo : encontrado.tarifaAereo;
-        } else if (p.categoria === 'CELULAR') {
-          nuevaTarifa = encontrado.tarifaCelularFija || configGlobal.tarifaCelularFija;
-        } else if (p.categoria === 'SMART_TV') {
-          nuevaTarifa = p.viaEnvio === 'MARITIMO' 
-            ? (encontrado.tarifaTvMaritimo || configGlobal.tarifaTvMaritimo) 
-            : (encontrado.tarifaTvAereo || configGlobal.tarifaTvAereo);
-        }
-        return { ...p, tarifaUnitario: nuevaTarifa };
-      }));
+      setPaquetes(prev => prev.map(p => ({
+        ...p,
+        tarifaUnitario: obtenerTarifaBaseCliente(p, encontrado, configGlobal)
+      })));
     }
   };
 
   const agregarPaquete = () => {
-    let tarifaSugerida = configGlobal.tarifaAereoGeneral;
-    if (clienteActual) {
-      tarifaSugerida = clienteActual.tarifaAereo;
-    }
+    let catInicial = esModoPiesCubicos ? 'PIES_CUBICOS' : 'GENERAL';
+    let viaInicial = esModoPiesCubicos ? 'MARITIMO' : 'AEREO';
+    
+    let nuevoPaquete = {
+      id: Date.now(),
+      tracking: '',
+      descripcion: '',
+      pesoLbs: 1,
+      altoIn: '',
+      anchoIn: '',
+      largoIn: '',
+      piesCubicos: '',
+      viaEnvio: viaInicial,
+      categoria: catInicial,
+      proveedorId: proveedores[0]?.id || '',
+      tarifaUnitario: 7.00
+    };
 
-    setPaquetes([
-      ...paquetes,
-      {
-        id: Date.now(),
-        tracking: '',
-        pesoLbs: 1,
-        viaEnvio: 'AEREO',
-        categoria: 'GENERAL',
-        proveedorId: proveedores[0]?.id || '',
-        tarifaUnitario: tarifaSugerida
-      }
-    ]);
+    nuevoPaquete.tarifaUnitario = obtenerTarifaBaseCliente(nuevoPaquete, clienteActual, configGlobal);
+    setPaquetes([...paquetes, nuevoPaquete]);
   };
 
   const eliminarPaquete = (id) => {
@@ -497,20 +522,51 @@ export default function RecepcionCarga() {
       paquetes.map((p) => {
         if (p.id !== id) return p;
 
-        const actualizado = { ...p, [campo]: valor };
+        let actualizado = { ...p, [campo]: valor };
+
+        // Restricción: Impedir mezcla de Pies Cúbicos con otras categorías
+        if (campo === 'categoria') {
+          const otrosPaquetes = paquetes.filter(item => item.id !== id);
+          const hayOtrosNoPiesCubicos = otrosPaquetes.some(item => item.categoria !== 'PIES_CUBICOS');
+          const hayOtrosPiesCubicos = otrosPaquetes.some(item => item.categoria === 'PIES_CUBICOS');
+
+          if (valor === 'PIES_CUBICOS' && hayOtrosNoPiesCubicos) {
+            setMensaje({
+              tipo: 'error',
+              texto: 'No se puede ingresar Pies Cúbicos junto a otras categorías. Debe procesarlo en una recepción por separado.'
+            });
+            return p;
+          }
+
+          if (valor !== 'PIES_CUBICOS' && hayOtrosPiesCubicos) {
+            setMensaje({
+              tipo: 'error',
+              texto: 'Esta recepción está restringida únicamente a la categoría Pies Cúbicos.'
+            });
+            return p;
+          }
+
+          if (valor === 'PIES_CUBICOS') {
+            actualizado.viaEnvio = 'MARITIMO';
+          }
+        }
+
+        // Auto-cálculo Híbrido de Pies Cúbicos
+        if (actualizado.categoria === 'PIES_CUBICOS') {
+          if (campo === 'altoIn' || campo === 'anchoIn' || campo === 'largoIn') {
+            const a = parseFloat(actualizado.altoIn) || 0;
+            const anc = parseFloat(actualizado.anchoIn) || 0;
+            const l = parseFloat(actualizado.largoIn) || 0;
+
+            if (a > 0 && anc > 0 && l > 0) {
+              const ft3 = (a * anc * l) / 1728;
+              actualizado.piesCubicos = ft3.toFixed(2);
+            }
+          }
+        }
 
         if (campo === 'categoria' || campo === 'viaEnvio') {
-          if (actualizado.categoria === 'CELULAR') {
-            actualizado.tarifaUnitario = clienteActual?.tarifaCelularFija || configGlobal.tarifaCelularFija;
-          } else if (actualizado.categoria === 'SMART_TV') {
-            actualizado.tarifaUnitario = actualizado.viaEnvio === 'MARITIMO'
-              ? (clienteActual?.tarifaTvMaritimo || configGlobal.tarifaTvMaritimo)
-              : (clienteActual?.tarifaTvAereo || configGlobal.tarifaTvAereo);
-          } else {
-            actualizado.tarifaUnitario = clienteActual
-              ? (actualizado.viaEnvio === 'MARITIMO' ? clienteActual.tarifaMaritimo : clienteActual.tarifaAereo)
-              : (actualizado.viaEnvio === 'MARITIMO' ? configGlobal.tarifaMaritimoGeneral : configGlobal.tarifaAereoGeneral);
-          }
+          actualizado.tarifaUnitario = obtenerTarifaBaseCliente(actualizado, clienteActual, configGlobal);
         }
 
         return actualizado;
@@ -519,14 +575,18 @@ export default function RecepcionCarga() {
   };
 
   const calcularSubtotalPaquete = (pkg) => {
-    const peso = parseFloat(pkg.pesoLbs) || 0;
     const tarifa = parseFloat(pkg.tarifaUnitario) || 0;
-    if (pkg.categoria === 'CELULAR' || pkg.categoria === 'PALLET') return tarifa;
+    if (pkg.categoria === 'PIES_CUBICOS') {
+      const ft3 = parseFloat(pkg.piesCubicos) || 0;
+      return ft3 * tarifa;
+    }
+    const peso = parseFloat(pkg.pesoLbs) || 0;
     return peso * tarifa;
   };
 
   const subtotalPaquetesUSD = paquetes.reduce((acc, p) => acc + calcularSubtotalPaquete(p), 0);
-  const totalLibras = paquetes.reduce((acc, p) => acc + (parseFloat(p.pesoLbs) || 0), 0);
+  const totalLibras = paquetes.reduce((acc, p) => acc + (p.categoria === 'PIES_CUBICOS' ? 0 : (parseFloat(p.pesoLbs) || 0)), 0);
+  const totalPiesCubicos = paquetes.reduce((acc, p) => acc + (p.categoria === 'PIES_CUBICOS' ? (parseFloat(p.piesCubicos) || 0) : 0), 0);
   const totalCobradoNIO = subtotalPaquetesUSD * (configGlobal.tipoCambioNIO || 36.6243);
 
   const handleSubmit = async (e) => {
@@ -541,7 +601,12 @@ export default function RecepcionCarga() {
       sucursalDestinoId: destinoFinal,
       paquetes: paquetes.map((p) => ({
         tracking: p.tracking || `TRK-${Date.now().toString().slice(-6)}`,
-        pesoLbs: parseFloat(p.pesoLbs) || 0,
+        descripcion: p.descripcion,
+        pesoLbs: p.categoria === 'PIES_CUBICOS' ? 0 : (parseFloat(p.pesoLbs) || 0),
+        piesCubicos: p.categoria === 'PIES_CUBICOS' ? (parseFloat(p.piesCubicos) || 0) : 0,
+        altoIn: parseFloat(p.altoIn) || 0,
+        anchoIn: parseFloat(p.anchoIn) || 0,
+        largoIn: parseFloat(p.largoIn) || 0,
         viaEnvio: p.viaEnvio,
         categoria: p.categoria,
         proveedorId: p.proveedorId ? parseInt(p.proveedorId) : null,
@@ -562,6 +627,7 @@ export default function RecepcionCarga() {
         usuarioNombre: usuario?.nombre || 'Operador',
         sucursalNombre: usuario?.sucursalNombre || 'Sede Central',
         totalLibras,
+        totalPiesCubicos,
         totalUSD: subtotalPaquetesUSD,
         totalNIO: totalCobradoNIO,
         tipoCambioAplicado: configGlobal.tipoCambioNIO,
@@ -580,7 +646,12 @@ export default function RecepcionCarga() {
         {
           id: Date.now(),
           tracking: '',
+          descripcion: '',
           pesoLbs: 1,
+          altoIn: '',
+          anchoIn: '',
+          largoIn: '',
+          piesCubicos: '',
           viaEnvio: 'AEREO',
           categoria: 'GENERAL',
           proveedorId: proveedores[0]?.id || '',
@@ -612,11 +683,16 @@ export default function RecepcionCarga() {
       </div>
 
       {mensaje && (
-        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between gap-2 ${
           mensaje.tipo === 'exito' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
-          {mensaje.tipo === 'exito' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-          <span>{mensaje.texto}</span>
+          <div className="flex items-center gap-2">
+            {mensaje.tipo === 'exito' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+            <span>{mensaje.texto}</span>
+          </div>
+          <button type="button" onClick={() => setMensaje(null)} className="text-slate-400 hover:text-slate-600">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -654,11 +730,13 @@ export default function RecepcionCarga() {
                     onChange={(e) => setSucursalDestinoId(e.target.value)}
                     className="w-full border rounded-xl py-2.5 pl-9 pr-3 font-bold text-xs focus:outline-none bg-white border-slate-300 text-slate-800"
                   >
-                    {sucursales.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.nombre} ({s.ciudad}) {s.tipoSucursal === 'FRANQUICIA_B2B' ? '• B2B' : ''}
-                      </option>
-                    ))}
+                    {sucursales
+                      .filter((s) => s.tipoSucursal !== 'FRANQUICIA_B2B')
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.nombre} ({s.ciudad})
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
@@ -676,6 +754,11 @@ export default function RecepcionCarga() {
             <div className="flex items-center gap-2 font-bold text-sm text-slate-700">
               <span className="w-6 h-6 rounded-full bg-brand/10 text-brand text-xs flex items-center justify-center font-display">2</span>
               <span>Paquetes y Proveedores ({paquetes.length} {paquetes.length === 1 ? 'bulto' : 'bultos'})</span>
+              {esModoPiesCubicos && (
+                <span className="ml-2 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center gap-1">
+                  <Boxes className="w-3 h-3" /> Exclusivo Pies Cúbicos
+                </span>
+              )}
             </div>
             {acordeonPaquetes ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
@@ -683,93 +766,199 @@ export default function RecepcionCarga() {
           {acordeonPaquetes && (
             <div className="p-5 space-y-4">
               <div className="space-y-3">
-                {paquetes.map((pkg) => (
-                  <div 
-                    key={pkg.id} 
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs"
-                  >
-                    <div className="lg:col-span-3">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">N° Tracking / Guía</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. TBA123456789"
-                        value={pkg.tracking}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'tracking', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800"
-                      />
-                    </div>
+                {paquetes.map((pkg) => {
+                  const tarifaBaseCliente = obtenerTarifaBaseCliente(pkg, clienteActual, configGlobal);
+                  const esPieCubico = pkg.categoria === 'PIES_CUBICOS';
+                  const tienenMedidas = (parseFloat(pkg.altoIn) || 0) > 0 && (parseFloat(pkg.anchoIn) || 0) > 0 && (parseFloat(pkg.largoIn) || 0) > 0;
 
-                    <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Proveedor</label>
-                      <select
-                        value={pkg.proveedorId}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'proveedorId', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs truncate"
-                      >
-                        {proveedores.map((prov) => (
-                          <option key={prov.id} value={prov.id}>{prov.nombre}</option>
-                        ))}
-                      </select>
-                    </div>
+                  // Evaluar otros bultos en la lista
+                  const otrosBultos = paquetes.filter(item => item.id !== pkg.id);
+                  const bloqueoDeshabilitarPiesCubicos = otrosBultos.some(item => item.categoria !== 'PIES_CUBICOS');
+                  const bloqueoDeshabilitarOtras = otrosBultos.some(item => item.categoria === 'PIES_CUBICOS');
 
-                    <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Categoría</label>
-                      <select
-                        value={pkg.categoria}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'categoria', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs"
-                      >
-                        <option value="GENERAL">General</option>
-                        <option value="SMART_TV">Smart TV</option>
-                        <option value="CELULAR">Celular</option>
-                        <option value="PALLET">Pallet</option>
-                      </select>
-                    </div>
+                  return (
+                    <div 
+                      key={pkg.id} 
+                      className={`p-4 rounded-xl border transition grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center text-xs ${
+                        esPieCubico ? 'bg-blue-50/50 border-blue-200' : 'bg-slate-50/70 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="lg:col-span-2">
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">N° Tracking / Guía</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej. TBA123456789"
+                          value={pkg.tracking}
+                          onChange={(e) => actualizarPaquete(pkg.id, 'tracking', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-800"
+                        />
+                      </div>
 
-                    <div className="lg:col-span-2">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Vía</label>
-                      <select
-                        value={pkg.viaEnvio}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'viaEnvio', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 text-xs"
-                      >
-                        <option value="AEREO">AÉREO</option>
-                        <option value="MARITIMO">MARÍTIMO</option>
-                      </select>
-                    </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Proveedor</label>
+                        <select
+                          value={pkg.proveedorId}
+                          onChange={(e) => actualizarPaquete(pkg.id, 'proveedorId', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs truncate"
+                        >
+                          {proveedores.map((prov) => (
+                            <option key={prov.id} value={prov.id}>{prov.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
 
-                    <div className="lg:col-span-1">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (lb)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={pkg.pesoLbs}
-                        onChange={(e) => actualizarPaquete(pkg.id, 'pesoLbs', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-slate-800 text-center"
-                      />
-                    </div>
+                      <div className="lg:col-span-2">
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Categoría</label>
+                        <select
+                          value={pkg.categoria}
+                          onChange={(e) => actualizarPaquete(pkg.id, 'categoria', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-medium text-slate-800 text-xs"
+                        >
+                          <option value="GENERAL" disabled={bloqueoDeshabilitarOtras}>General</option>
+                          <option value="SMART_TV" disabled={bloqueoDeshabilitarOtras}>Smart TV</option>
+                          <option value="CELULAR" disabled={bloqueoDeshabilitarOtras}>Celular</option>
+                          <option value="PIES_CUBICOS" disabled={bloqueoDeshabilitarPiesCubicos}>Pies Cúbicos</option>
+                        </select>
+                      </div>
 
-                    <div className="lg:col-span-1 text-right">
-                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Subtotal</label>
-                      <div className="text-xs font-bold font-display text-slate-900 pt-1">
-                        ${calcularSubtotalPaquete(pkg).toFixed(2)}
+                      {/* Renderizado Dinámico para Pies Cúbicos vs Carga General */}
+                      {esPieCubico ? (
+                        <>
+                          <div className="lg:col-span-2">
+                            <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Descripción</label>
+                            <input
+                              type="text"
+                              placeholder="Ej. Pallet, Caja, Barril"
+                              value={pkg.descripcion || ''}
+                              onChange={(e) => actualizarPaquete(pkg.id, 'descripcion', e.target.value)}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-2 font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div className="lg:col-span-2">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Medidas (in)</label>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1">
+                              <input
+                                type="number"
+                                placeholder="Alt"
+                                value={pkg.altoIn || ''}
+                                onChange={(e) => actualizarPaquete(pkg.id, 'altoIn', e.target.value)}
+                                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-800 text-center"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Anc"
+                                value={pkg.anchoIn || ''}
+                                onChange={(e) => actualizarPaquete(pkg.id, 'anchoIn', e.target.value)}
+                                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-800 text-center"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Lar"
+                                value={pkg.largoIn || ''}
+                                onChange={(e) => actualizarPaquete(pkg.id, 'largoIn', e.target.value)}
+                                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-800 text-center"
+                              />
+                            </div>
+                            <span className="block text-[9px] text-slate-400 text-center mt-0.5">Alto × Ancho × Largo (÷1728)</span>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <label className="block text-[10px] uppercase font-bold text-blue-600 mb-1">Pies Cúbicos (FT³)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              disabled={tienenMedidas}
+                              placeholder="0.00"
+                              value={pkg.piesCubicos || ''}
+                              onChange={(e) => actualizarPaquete(pkg.id, 'piesCubicos', e.target.value)}
+                              className={`w-full border border-blue-300 rounded-lg p-2 font-black text-blue-700 text-center ${
+                                tienenMedidas ? 'bg-blue-100/50 cursor-not-allowed' : 'bg-white'
+                              }`}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="lg:col-span-1">
+                            <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Vía</label>
+                            <select
+                              value={pkg.viaEnvio}
+                              onChange={(e) => actualizarPaquete(pkg.id, 'viaEnvio', e.target.value)}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 text-xs"
+                            >
+                              <option value="AEREO">AÉREO</option>
+                              <option value="MARITIMO">MARÍTIMO</option>
+                            </select>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Peso (lb)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={pkg.pesoLbs}
+                              onChange={(e) => actualizarPaquete(pkg.id, 'pesoLbs', e.target.value)}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-slate-800 text-center"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* Vía en Pies Cúbicos (Fijo Marítimo) */}
+                      {esPieCubico && (
+                        <div className="lg:col-span-1">
+                          <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Vía</label>
+                          <div className="p-2 bg-slate-200/60 rounded-lg font-bold text-slate-600 text-center text-xs">
+                            MARÍTIMO
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="lg:col-span-1 text-center">
+                        <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Tarifa Cliente</label>
+                        <div className="p-2 bg-slate-100 rounded-lg font-bold text-slate-500 border border-slate-200">
+                          ${tarifaBaseCliente.toFixed(2)}
+                        </div>
+                      </div>
+
+                      <div className="lg:col-span-1">
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Tarifa Final ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={pkg.tarifaUnitario}
+                          onChange={(e) => actualizarPaquete(pkg.id, 'tarifaUnitario', e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-emerald-700 text-center"
+                        />
+                      </div>
+
+                      <div className="lg:col-span-1 text-right">
+                        <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Subtotal</label>
+                        <div className="text-xs font-bold font-display text-slate-900 pt-1">
+                          ${calcularSubtotalPaquete(pkg).toFixed(2)}
+                        </div>
+                      </div>
+
+                      <div className="lg:col-span-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => eliminarPaquete(pkg.id)}
+                          disabled={paquetes.length === 1}
+                          className="p-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg shadow-sm disabled:opacity-30 disabled:bg-slate-300 transition cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="lg:col-span-1 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => eliminarPaquete(pkg.id)}
-                        disabled={paquetes.length === 1}
-                        className="p-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg shadow-sm disabled:opacity-30 disabled:bg-slate-300 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <button
@@ -784,13 +973,21 @@ export default function RecepcionCarga() {
           )}
         </div>
 
-        {/* Resumen */}
+        {/* Resumen Final */}
         <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-center md:text-left">
-            <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Peso Total</p>
-              <p className="text-2xl font-black font-display text-white">{totalLibras.toFixed(2)} lbs</p>
-            </div>
+            {esModoPiesCubicos ? (
+              <div>
+                <p className="text-xs text-blue-400 uppercase tracking-wider font-semibold">Volumen Total</p>
+                <p className="text-2xl font-black font-display text-white">{totalPiesCubicos.toFixed(2)} ft³</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Peso Total</p>
+                <p className="text-2xl font-black font-display text-white">{totalLibras.toFixed(2)} lbs</p>
+              </div>
+            )}
+
             <div className="border-l border-slate-700 pl-6 sm:pl-10">
               <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Flete USD (A Crédito)</p>
               <p className="text-2xl font-black font-display text-emerald-400">${subtotalPaquetesUSD.toFixed(2)} USD</p>
@@ -812,51 +1009,140 @@ export default function RecepcionCarga() {
         </div>
       </form>
 
-      {/* Ticket */}
+      {/* Comprobante / Ticket Pro & WhatsApp Notification */}
       {ticketData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-xs font-mono">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs">
+            {/* Encabezado del Comprobante */}
             <div className="text-center border-b pb-3 space-y-1">
-              <h3 className="font-bold font-sans text-base text-slate-900">ABBA XPRESS</h3>
-              <p className="text-[10px] text-slate-500">COMPROBANTE DE RECEPCIÓN EN BODEGA</p>
-              <p className="text-xs font-bold text-brand">#{ticketData.numeroProforma}</p>
+              <div className="flex items-center justify-center gap-2">
+                <PackagePlus className="w-5 h-5 text-brand" />
+                <h3 className="font-bold font-display text-lg text-slate-900">ABBA XPRESS</h3>
+              </div>
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+                Comprobante de Ingreso a Bodega
+              </p>
+              <span className="inline-block px-3 py-1 bg-brand/10 text-brand font-mono font-bold rounded-full text-xs">
+                #{ticketData.numeroProforma}
+              </span>
             </div>
 
-            <div className="space-y-1 text-[11px]">
-              <p><strong>Cliente:</strong> {ticketData.clienteNombre}</p>
-              <p><strong>Teléfono:</strong> {ticketData.clienteTelefono || 'N/A'}</p>
-              <p><strong>Condición:</strong> PENDIENTE DE COBRO</p>
-              <p><strong>Fecha:</strong> {ticketData.fecha}</p>
-            </div>
-
-            <div className="border-t border-b py-2 space-y-1">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Bultos Recepcionados ({ticketData.paquetes.length})</p>
-              {ticketData.paquetes.map((p, idx) => (
-                <div key={idx} className="flex justify-between text-[11px]">
-                  <span className="font-bold">{p.tracking} ({p.pesoLbs} lb)</span>
-                  <span>${p.subtotal.toFixed(2)}</span>
+            {/* Datos del Cliente y Emisión */}
+            <div className="bg-slate-50 p-3 rounded-xl space-y-1 text-slate-700 font-sans">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Cliente:</span>
+                <span className="font-bold text-slate-900">{ticketData.clienteNombre}</span>
+              </div>
+              {ticketData.clienteTelefono && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Teléfono:</span>
+                  <span className="font-mono">{ticketData.clienteTelefono}</span>
                 </div>
-              ))}
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Fecha:</span>
+                <span className="text-[11px]">{ticketData.fecha}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Condición:</span>
+                <span className="font-bold text-amber-600">PENDIENTE DE COBRO</span>
+              </div>
             </div>
 
-            <div className="text-right space-y-0.5">
-              <p className="text-sm font-black font-sans text-slate-900">TOTAL FLETE: ${ticketData.totalUSD.toFixed(2)} USD</p>
-              <p className="text-xs font-sans text-slate-500">C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
+            {/* Detalle de Bultos */}
+            <div className="border border-slate-200 rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto font-mono">
+              <div className="flex justify-between text-[10px] font-bold uppercase text-slate-400 border-b pb-1">
+                <span>Tracking / Bulto</span>
+                <span>Subtotal</span>
+              </div>
+              {ticketData.paquetes.map((p, idx) => {
+                const medida = p.categoria === 'PIES_CUBICOS' 
+                  ? `${p.piesCubicos} ft³` 
+                  : `${p.pesoLbs} lb`;
+                return (
+                  <div key={idx} className="flex justify-between items-center text-[11px]">
+                    <div className="truncate pr-2">
+                      <span className="font-bold text-slate-800 block truncate">{p.tracking}</span>
+                      <span className="text-[10px] text-slate-500">
+                        {p.categoria} · {medida} @ ${p.tarifaUnitario}/unit
+                      </span>
+                    </div>
+                    <span className="font-bold text-slate-900 shrink-0">${p.subtotal.toFixed(2)}</span>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button 
-                onClick={() => setTicketData(null)}
-                className="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+            {/* Totales */}
+            <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center font-sans">
+              <div>
+                <p className="text-[10px] text-slate-400 uppercase font-semibold">
+                  {ticketData.totalPiesCubicos > 0 ? 'Volumen Total' : 'Peso Total'}
+                </p>
+                <p className="font-bold text-sm">
+                  {ticketData.totalPiesCubicos > 0 
+                    ? `${ticketData.totalPiesCubicos.toFixed(2)} ft³` 
+                    : `${ticketData.totalLibras.toFixed(2)} lbs`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400 uppercase font-semibold">Total a Pagar</p>
+                <p className="text-lg font-black text-emerald-400">${ticketData.totalUSD.toFixed(2)} USD</p>
+                <p className="text-[11px] text-brand-300 font-bold">C$ {ticketData.totalNIO.toFixed(2)} NIO</p>
+              </div>
+            </div>
+
+            {/* Acciones: WhatsApp, Imprimir y Cerrar */}
+            <div className="space-y-2 pt-1 font-sans">
+              <button
+                type="button"
+                onClick={() => {
+                  const telefonoLimpio = (ticketData.clienteTelefono || '').replace(/\D/g, '');
+                  const numWhatsapp = telefonoLimpio.length === 8 ? `505${telefonoLimpio}` : telefonoLimpio;
+
+                  let bultosTexto = ticketData.paquetes.map(p => {
+                    const medida = p.categoria === 'PIES_CUBICOS' ? `${p.piesCubicos} ft³` : `${p.pesoLbs} lbs`;
+                    return `• *${p.tracking}* (${medida}): $${p.subtotal.toFixed(2)} USD`;
+                  }).join('\n');
+
+                  const mensajeWA = 
+                    `*ABBA XPRESS - NOTIFICACIÓN DE CARGA EN BODEGA*\n\n` +
+                    `Hola *${ticketData.clienteNombre}*, hemos recepcionado tus bultos:\n\n` +
+                    `📌 *Proforma:* #${ticketData.numeroProforma}\n` +
+                    `📦 *Total Bultos:* ${ticketData.paquetes.length}\n` +
+                    `${ticketData.totalPiesCubicos > 0 ? `📐 *Volumen:* ${ticketData.totalPiesCubicos.toFixed(2)} ft³\n` : `⚖️ *Peso Total:* ${ticketData.totalLibras.toFixed(2)} lbs\n`}` +
+                    `\n*Detalle de Trackings:*\n${bultosTexto}\n\n` +
+                    `💰 *TOTAL A PAGAR:*\n` +
+                    `*${ticketData.totalUSD.toFixed(2)} USD* | *C$ ${ticketData.totalNIO.toFixed(2)} NIO*\n\n` +
+                    `Quedamos a tu disposición para la entrega o retiro. ¡Gracias por tu preferencia!`;
+
+                  const url = numWhatsapp 
+                    ? `https://api.whatsapp.com/send?phone=${numWhatsapp}&text=${encodeURIComponent(mensajeWA)}`
+                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(mensajeWA)}`;
+
+                  window.open(url, '_blank');
+                }}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer text-xs"
               >
-                Cerrar
+                <span>Enviar Notificación por WhatsApp</span>
               </button>
-              <button 
-                onClick={() => window.print()}
-                className="w-1/2 py-2 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" /> Imprimir
-              </button>
+
+              <div className="flex gap-2">
+                <button 
+                  type="button"
+                  onClick={() => setTicketData(null)}
+                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs"
+                >
+                  Cerrar
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  className="w-1/2 py-2.5 bg-brand hover:bg-brand-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir Comprobante
+                </button>
+              </div>
             </div>
           </div>
         </div>
